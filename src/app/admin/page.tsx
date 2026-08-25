@@ -11,6 +11,8 @@ export default function AdminDashboard() {
   const [bhattas, setBhattas] = useState<Bhatta[]>([]);
   const [activeBhattaId, setActiveBhattaId] = useState<string | null>(null);
   const [labourers, setLabourers] = useState<Labour[]>([]);
+  const [newBhattaName, setNewBhattaName] = useState("");
+  const [isAddingBhatta, setIsAddingBhatta] = useState(false);
   
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"dashboard" | "eent" | "kharcha" | "peshgi" | "manage">("dashboard");
@@ -287,6 +289,28 @@ export default function AdminDashboard() {
               <button key={b.id} onClick={() => { setActiveBhattaId(b.id); setIsSidebarOpen(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-sm transition border ${activeBhattaId === b.id ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-400' : 'border-transparent hover:bg-slate-700 text-gray-300'}`}>{b.name}</button>
             ))}
           </div>
+          {isAddingBhatta ? (
+            <form onSubmit={handleAddBhatta} className="flex gap-2">
+              <input
+                type="text"
+                value={newBhattaName}
+                onChange={(e) => setNewBhattaName(e.target.value)}
+                placeholder="New work site"
+                className="min-w-0 flex-1 rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm outline-none focus:border-emerald-500"
+                autoFocus
+              />
+              <button type="submit" className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold hover:bg-emerald-500" aria-label="Add work site">
+                <Check size={16} />
+              </button>
+              <button type="button" onClick={() => { setNewBhattaName(""); setIsAddingBhatta(false); }} className="rounded-lg bg-slate-700 px-3 py-2 text-sm hover:bg-slate-600" aria-label="Cancel adding work site">
+                <X size={16} />
+              </button>
+            </form>
+          ) : (
+            <button type="button" onClick={() => setIsAddingBhatta(true)} className="w-full rounded-lg border border-dashed border-slate-600 px-3 py-2 text-sm text-slate-300 transition hover:border-emerald-500 hover:text-emerald-400">
+              + Add Work Site
+            </button>
+          )}
         </div>
       </div>
 
