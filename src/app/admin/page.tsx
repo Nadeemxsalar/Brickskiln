@@ -241,7 +241,7 @@ export default function AdminDashboard() {
       
       {/* 🟢 CUSTOM TOAST POPUP */}
       {toast && (
-        <div className={`fixed top-5 left-1/2 transform -translate-x-1/2 z-[100] flex items-center gap-3 px-5 py-3 rounded-xl shadow-2xl transition-all animate-in fade-in slide-in-from-top-5 duration-300 ${toast.type === 'error' ? 'bg-rose-600 text-white' : 'bg-emerald-600 text-white'}`}>
+        <div className={`fixed top-5 left-1/2 transform -translate-x-1/2 z-100 flex items-center gap-3 px-5 py-3 rounded-xl shadow-2xl transition-all animate-in fade-in slide-in-from-top-5 duration-300 ${toast.type === 'error' ? 'bg-rose-600 text-white' : 'bg-emerald-600 text-white'}`}>
           {toast.type === 'error' ? <AlertCircle size={22} /> : <CheckCircle size={22} />}
           <span className="font-semibold text-sm">{toast.msg}</span>
         </div>
@@ -254,7 +254,7 @@ export default function AdminDashboard() {
             <Menu size={28} />
           </button>
           <div className="ml-4 flex flex-col">
-            <h1 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent leading-none">
+            <h1 className="text-xl md:text-2xl font-bold bg-linear-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent leading-none">
               Bhatta Pro
             </h1>
             <span className="text-xs text-emerald-400 font-medium">{activeBhattaName}</span>
@@ -388,7 +388,7 @@ export default function AdminDashboard() {
               </div>
               
               <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse min-w-[700px]">
+                <table className="w-full text-left border-collapse min-w-175">
                   <thead>
                     <tr className="bg-slate-900/60 text-slate-300 text-xs uppercase tracking-wider border-b border-slate-700">
                       <th className="p-4 font-semibold">Name</th><th className="p-4 font-semibold">Mobile</th><th className="p-4 font-semibold">Location</th><th className="p-4 font-semibold text-emerald-400">Rate Per Paye (₹)</th><th className="p-4 font-semibold text-center">Action</th>
@@ -437,7 +437,7 @@ export default function AdminDashboard() {
                   </div>
                 </div>
 
-                <div className="bg-slate-900/60 border border-slate-700/60 rounded-xl max-h-[300px] overflow-y-auto custom-scrollbar shadow-inner">
+                <div className="bg-slate-900/60 border border-slate-700/60 rounded-xl max-h-75 overflow-y-auto custom-scrollbar shadow-inner">
                   <label className="flex items-center gap-3 p-3 hover:bg-slate-800/80 cursor-pointer border-b border-slate-700/50 sticky top-0 bg-slate-900/95 backdrop-blur z-10">
                     <input type="checkbox" className="w-4 h-4 accent-emerald-500 rounded" checked={selectedLabourIds.length === filteredBulk.length && filteredBulk.length > 0} onChange={(e) => { e.target.checked ? setSelectedLabourIds(filteredBulk.map(l => l.id)) : setSelectedLabourIds([]); }} />
                     <span className="text-sm font-bold text-white">Select All ({filteredBulk.length})</span>
@@ -460,7 +460,7 @@ export default function AdminDashboard() {
               <h3 className="text-lg font-bold text-slate-300 mb-4 flex items-center gap-2">Records for <span className="text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">{entryDate}</span></h3>
               <div className="bg-slate-800/40 border border-slate-700/50 rounded-2xl overflow-hidden shadow-xl">
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse min-w-[500px]">
+                  <table className="w-full text-left border-collapse min-w-125">
                     <thead>
                       <tr className="bg-slate-900/60 text-slate-400 text-xs uppercase tracking-wider border-b border-slate-700"><th className="p-4 font-semibold">Name</th><th className="p-4 font-semibold">Location</th><th className="p-4 font-semibold text-emerald-400">Total Paye</th><th className="p-4 font-semibold text-cyan-400">Earned</th></tr>
                     </thead>
@@ -561,7 +561,7 @@ export default function AdminDashboard() {
                   </div>
                 </div>
 
-                <div className="bg-slate-900/60 border border-slate-700/60 rounded-xl max-h-[400px] overflow-y-auto custom-scrollbar shadow-inner">
+                <div className="bg-slate-900/60 border border-slate-700/60 rounded-xl max-h-100 overflow-y-auto custom-scrollbar shadow-inner">
                   <table className="w-full text-left border-collapse">
                     <thead className="bg-slate-900/90 text-slate-400 text-[10px] uppercase tracking-wider sticky top-0 z-10 border-b border-slate-700">
                       <tr><th className="p-3">Labour Name</th><th className="p-3">Location</th><th className="p-3 text-right text-rose-400">Total Advance</th></tr>
