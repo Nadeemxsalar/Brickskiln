@@ -1,0 +1,44 @@
+.modalOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.modalContent {
+  background: rgba(31, 41, 55, 0.95); /* bg-gray-800 with opacity */
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 2rem;
+  width: 90%;
+  max-width: 450px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+  color: white;
+}
+
+.modalHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.closeButton {
+  background: none;
+  border: none;
+  color: #9ca3af; /* text-gray-400 */
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.closeButton:hover {
+  color: white;
+}

@@ -1,0 +1,58 @@
+.container {
+  min-height: 100vh;
+  padding: 2rem;
+  background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
+  color: #fff;
+}
+
+.glassCard {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 2rem;
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+  margin-bottom: 2rem;
+}
+
+.headerTitle {
+  font-size: 2rem;
+  font-weight: 700;
+  margin-bottom: 1.5rem;
+  background: linear-gradient(to right, #60a5fa, #a78bfa);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.inputField {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: white;
+  margin-bottom: 1rem;
+  outline: none;
+  transition: border-color 0.3s ease;
+}
+
+.inputField:focus {
+  border-color: #60a5fa;
+}
+
+.btnPrimary {
+  background: linear-gradient(to right, #3b82f6, #8b5cf6);
+  color: white;
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.btnPrimary:hover {
+  transform: translateY(-2px);
+  opacity: 0.9;
+}

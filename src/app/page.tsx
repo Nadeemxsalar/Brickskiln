@@ -1,69 +1,200 @@
-import Image from "next/image";
+"use client";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { Menu, X, ArrowRight, User, ShieldCheck } from "lucide-react";
+import { getLabourData } from "../lib/storage"; // Local storage se data lene ke liye
+import { Labour } from "../types";
 
-export default function Home() {
+export default function HomePage() {
+  const router = useRouter();
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [loginRole, setLoginRole] = useState<"admin" | "labour">("labour");
+
+  // Login inputs
+  const [mobile, setMobile] = useState("");
+  const [adminPassword, setAdminPassword] = useState("");
+  const [errorMsg, setErrorMsg] = useState("");
+
+  const toggleSidebar = () => {
+    setIsSidebarOpen(!isSidebarOpen);
+    setErrorMsg(""); // Sidebar khulte/band hote waqt error clear kar do
+  };
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg("");
+
+    if (loginRole === "admin") {
+      // Admin Login Logic (Filhal ke liye hardcoded password 'admin123' rakha hai)
+      if (adminPassword === "admin123") {
+        // NAYA: Session save kar rahe hain taaki security rahe
+        localStorage.setItem("bhatta_session", "admin");
+        router.push("/admin");
+      } else {
+        setErrorMsg("Galat Password! Kripya sahi password dalein.");
+      }
+    } else {
+      // Labour Login Logic
+      if (!mobile) {
+        setErrorMsg("Kripya apna mobile number dalein.");
+        return;
+      }
+
+      // Local storage se labourers ka data fetch karo
+      const labourers: Labour[] = getLabourData("bhatta_labourers") || [];
+      
+      // Check karo ki is mobile number se koi labour hai kya?
+      const foundLabour = labourers.find((lab) => lab.phone === mobile);
+
+      if (foundLabour) {
+        // NAYA: User ka session save kar rahe hain
+        localStorage.setItem("bhatta_session", `user_${foundLabour.id}`);
+        // Agar mil gaya, toh sirf uske specific ID wale page par bhej do
+        router.push(`/labour/${foundLabour.id}`);
+      } else {
+        setErrorMsg("Ye mobile number registered nahi hai. Admin se sampark karein.");
+      }
+    }
+  };
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="min-h-screen bg-slate-900 text-white overflow-hidden relative">
+      {/* Background Decor */}
+      <div className="absolute top-[-10%] left-[-10%] w-96 h-96 bg-blue-600/30 rounded-full blur-3xl pointer-events-none"></div>
+      <div className="absolute bottom-[-10%] right-[-10%] w-96 h-96 bg-purple-600/30 rounded-full blur-3xl pointer-events-none"></div>
+
+      {/* Navbar */}
+      <nav className="relative z-10 flex justify-between items-center p-6 lg:px-12 backdrop-blur-sm border-b border-white/10">
+        <div className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+          Bhatta Pro
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+        <button 
+          onClick={toggleSidebar}
+          className="p-2 bg-white/5 border border-white/10 rounded-lg hover:bg-white/10 transition"
+        >
+          <Menu className="w-6 h-6" />
+        </button>
+      </nav>
+
+      {/* Main Hero Section */}
+      <main className="relative z-10 flex flex-col items-center justify-center min-h-[80vh] text-center px-4">
+        <h1 className="text-5xl md:text-7xl font-extrabold mb-6 tracking-tight">
+          Brick Kiln Management <br className="hidden md:block" /> 
+          <span className="bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+            Simplified
+          </span>
+        </h1>
+        <p className="text-lg md:text-xl text-gray-300 max-w-2xl mb-10">
+          Complete control for Administrators and transparent ledgers for Labourers. 
+          Manage advances, raw bricks, and monthly records all in one place.
+        </p>
+        <button 
+          onClick={toggleSidebar}
+          className="flex items-center gap-2 px-8 py-4 bg-gradient-to-r from-blue-600 to-purple-600 rounded-full font-semibold text-lg hover:scale-105 transition shadow-[0_0_20px_rgba(59,130,246,0.5)]"
+        >
+          Login / Get Started <ArrowRight className="w-5 h-5" />
+        </button>
       </main>
+
+      {/* Side Drawer (Login/Signup Panel) */}
+      {isSidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 transition-opacity"
+          onClick={toggleSidebar}
+        ></div>
+      )}
+
+      {/* Sidebar Content */}
+      <div 
+        className={`fixed top-0 right-0 h-full w-full md:w-[400px] bg-slate-900/95 border-l border-white/10 backdrop-blur-xl z-50 transform transition-transform duration-300 ease-in-out ${
+          isSidebarOpen ? "translate-x-0" : "translate-x-full"
+        }`}
+      >
+        <div className="p-6 h-full flex flex-col">
+          <div className="flex justify-between items-center mb-8">
+            <h2 className="text-2xl font-bold">Login Portal</h2>
+            <button onClick={toggleSidebar} className="p-2 bg-white/5 rounded-full hover:bg-white/10">
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+
+          {/* Role Toggle */}
+          <div className="flex bg-black/40 p-1 rounded-xl mb-8 border border-white/5">
+            <button 
+              onClick={() => { setLoginRole("labour"); setErrorMsg(""); }}
+              className={`flex-1 py-3 rounded-lg flex justify-center items-center gap-2 font-medium transition ${loginRole === "labour" ? "bg-blue-600 text-white shadow-sm" : "text-gray-400 hover:text-white"}`}
+            >
+              <User className="w-4 h-4" /> Labour
+            </button>
+            <button 
+              onClick={() => { setLoginRole("admin"); setErrorMsg(""); }}
+              className={`flex-1 py-3 rounded-lg flex justify-center items-center gap-2 font-medium transition ${loginRole === "admin" ? "bg-purple-600 text-white shadow-sm" : "text-gray-400 hover:text-white"}`}
+            >
+              <ShieldCheck className="w-4 h-4" /> Admin
+            </button>
+          </div>
+
+          {/* Login Form */}
+          <div className="flex-1">
+            <p className="text-gray-400 mb-6 text-sm">
+              {loginRole === "admin" 
+                ? "Login as Kiln Owner/Manager for full system access." 
+                : "Enter your registered mobile number to view your ledger."}
+            </p>
+
+            <form onSubmit={handleLogin} className="space-y-4">
+              
+              {/* If Labour Role is selected, show Mobile Number input */}
+              {loginRole === "labour" && (
+                <div>
+                  <label className="block text-sm text-gray-300 mb-2">Registered Mobile Number</label>
+                  <input 
+                    type="tel" 
+                    value={mobile}
+                    onChange={(e) => setMobile(e.target.value)}
+                    className="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 transition" 
+                    placeholder="E.g., 9876543210"
+                  />
+                </div>
+              )}
+
+              {/* If Admin Role is selected, show Password input */}
+              {loginRole === "admin" && (
+                <div>
+                  <label className="block text-sm text-gray-300 mb-2">Admin Password</label>
+                  <input 
+                    type="password" 
+                    value={adminPassword}
+                    onChange={(e) => setAdminPassword(e.target.value)}
+                    className="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-purple-500 transition" 
+                    placeholder="Enter master password"
+                  />
+                </div>
+              )}
+
+              {/* Error Message Display */}
+              {errorMsg && (
+                <p className="text-red-400 text-sm font-medium p-2 bg-red-900/20 border border-red-500/20 rounded-lg">
+                  {errorMsg}
+                </p>
+              )}
+              
+              <button 
+                type="submit"
+                className={`w-full text-center mt-4 py-3 rounded-xl font-semibold transition ${
+                  loginRole === "admin" ? "bg-purple-600 hover:bg-purple-700" : "bg-blue-600 hover:bg-blue-700"
+                }`}
+              >
+                Login as {loginRole === "admin" ? "Admin" : "Labour"}
+              </button>
+            </form>
+          </div>
+
+          <div className="text-center text-sm text-gray-500 pb-4 mt-auto">
+            Secured by Bhatta Pro v1.0
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
