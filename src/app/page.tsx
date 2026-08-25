@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Menu, X, ArrowRight, User, ShieldCheck } from "lucide-react";
-import { getLabourData } from "../lib/storage"; // Local storage se data lene ke liye
+import { getLabourData } from "../lib/storage"; 
 import { Labour } from "../types";
 
 export default function HomePage() {
@@ -11,13 +11,13 @@ export default function HomePage() {
   const [loginRole, setLoginRole] = useState<"admin" | "labour">("labour");
 
   // Login inputs
-  const [mobile, setMobile] = useState("");
+  const [loginId, setLoginId] = useState(""); // NAYA: Mobile ki jagah Labour ID
   const [adminPassword, setAdminPassword] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
 
   const toggleSidebar = () => {
     setIsSidebarOpen(!isSidebarOpen);
-    setErrorMsg(""); // Sidebar khulte/band hote waqt error clear kar do
+    setErrorMsg(""); 
   };
 
   const handleLogin = (e: React.FormEvent) => {
@@ -25,9 +25,8 @@ export default function HomePage() {
     setErrorMsg("");
 
     if (loginRole === "admin") {
-      // Admin Login Logic (Filhal ke liye hardcoded password 'admin123' rakha hai)
+      // Admin Login Logic
       if (adminPassword === "admin123") {
-        // NAYA: Session save kar rahe hain taaki security rahe
         localStorage.setItem("bhatta_session", "admin");
         router.push("/admin");
       } else {
@@ -35,24 +34,21 @@ export default function HomePage() {
       }
     } else {
       // Labour Login Logic
-      if (!mobile) {
-        setErrorMsg("Kripya apna mobile number dalein.");
+      if (!loginId) {
+        setErrorMsg("Kripya apni Labour ID dalein.");
         return;
       }
 
-      // Local storage se labourers ka data fetch karo
-      const labourers: Labour[] = getLabourData("bhatta_labourers") || [];
+      const labourers: any[] = getLabourData("bhatta_labourers") || [];
       
-      // Check karo ki is mobile number se koi labour hai kya?
-      const foundLabour = labourers.find((lab) => lab.phone === mobile);
+      // NAYA: Ab mobile ki jagah loginId se check hoga
+      const foundLabour = labourers.find((lab) => lab.loginId === loginId);
 
       if (foundLabour) {
-        // NAYA: User ka session save kar rahe hain
         localStorage.setItem("bhatta_session", `user_${foundLabour.id}`);
-        // Agar mil gaya, toh sirf uske specific ID wale page par bhej do
         router.push(`/labour/${foundLabour.id}`);
       } else {
-        setErrorMsg("Ye mobile number registered nahi hai. Admin se sampark karein.");
+        setErrorMsg("Ye Labour ID registered nahi hai. Admin se sampark karein.");
       }
     }
   };
@@ -139,21 +135,21 @@ export default function HomePage() {
             <p className="text-gray-400 mb-6 text-sm">
               {loginRole === "admin" 
                 ? "Login as Kiln Owner/Manager for full system access." 
-                : "Enter your registered mobile number to view your ledger."}
+                : "Enter your Labour ID to view your ledger and add remarks."}
             </p>
 
             <form onSubmit={handleLogin} className="space-y-4">
               
-              {/* If Labour Role is selected, show Mobile Number input */}
+              {/* If Labour Role is selected, show Labour ID input */}
               {loginRole === "labour" && (
                 <div>
-                  <label className="block text-sm text-gray-300 mb-2">Registered Mobile Number</label>
+                  <label className="block text-sm text-gray-300 mb-2">Labour ID</label>
                   <input 
-                    type="tel" 
-                    value={mobile}
-                    onChange={(e) => setMobile(e.target.value)}
+                    type="text" 
+                    value={loginId}
+                    onChange={(e) => setLoginId(e.target.value)}
                     className="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 transition" 
-                    placeholder="E.g., 9876543210"
+                    placeholder="E.g., 1001"
                   />
                 </div>
               )}

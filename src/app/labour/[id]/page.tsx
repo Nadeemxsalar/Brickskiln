@@ -3,8 +3,10 @@ import { useEffect, useState, use } from "react";
 import { useRouter } from "next/navigation";
 import { getLabourData, saveLabourData } from "../../../lib/storage";
 import { Labour } from "../../../types";
-import { IndianRupee, ArrowLeft, Layers, MessageSquare, MessageSquareText, Check, LayoutList, Table, Edit3, X, PlusCircle, LogOut, Calculator } from "lucide-react";
+import { IndianRupee, ArrowLeft, Layers, MessageSquare, MessageSquareText, Check, LayoutList, Table, Edit3, X, PlusCircle, LogOut, Calculator, Download } from "lucide-react";
 import Link from "next/link";
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 export default function LabourView({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
@@ -13,7 +15,6 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
 
-  // Security State
   const [isAdmin, setIsAdmin] = useState(false);
   const [isAuthorized, setIsAuthorized] = useState(false);
 
@@ -24,11 +25,9 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
 
   const [viewMode, setViewMode] = useState<"card" | "table">("card");
   
-  // Grand Total Toggle State
   const [includePeshgi, setIncludePeshgi] = useState(true);
 
   useEffect(() => {
-    // SECURITY CHECK
     const session = localStorage.getItem("bhatta_session");
 
     if (session === "admin") {
@@ -64,8 +63,9 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
   };
 
   const handleSaveRemark = (dateStr: string) => {
-    if (!isAdmin || !editingRemark || editingRemark.date !== dateStr) return;
+    if (!editingRemark || editingRemark.date !== dateStr) return;
     const allLabourers = getLabourData("bhatta_labourers") || [];
+    
     const updatedLabourers = allLabourers.map((l: any) => {
       if (l.id === labour.id) {
         let entryExists = false;
@@ -75,7 +75,15 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
         });
 
         if (!entryExists && editingRemark.text.trim() !== "") {
-          updatedEntries.push({ id: Date.now().toString() + Math.random().toString(), date: dateStr, payeCount: 0, kharcha: 0, peshgi: 0, remark: editingRemark.text });
+          updatedEntries.push({ 
+            id: Date.now().toString() + Math.random().toString(), 
+            date: dateStr, 
+            payeCount: 0, 
+            customRatePerPaya: l.ratePerPaya || 0,
+            kharcha: 0, 
+            peshgi: 0, 
+            remark: editingRemark.text 
+          });
         }
         const updatedL = { ...l, entries: updatedEntries };
         setLabour(updatedL); 
@@ -127,9 +135,6 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
     setEditingRowDate(null);
   };
 
-  // ============================================
-  // LIFETIME GRAND TOTAL CALCULATIONS
-  // ============================================
   const defaultPayeRate = labour.ratePerPaya || 0;
   let lifetimeEarned = 0;
   const safeEntries = Array.isArray(labour.entries) ? labour.entries : [];
@@ -145,9 +150,58 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
   const deductions = lifetimeKharcha + (includePeshgi ? lifetimePeshgi : 0);
   const grandTotal = lifetimeEarned - deductions;
 
-  // ============================================
-  // MONTHLY CALCULATIONS
-  // ============================================
+  const downloadMyParchi = () => {
+    const doc = new jsPDF();
+    
+    doc.setFontSize(22);
+    doc.setTextColor(30, 64, 175); 
+    doc.text(`Bhatta Pro - Hisaab Parchi`, 14, 20);
+    
+    doc.setFontSize(12);
+    doc.setTextColor(0, 0, 0);
+    doc.text(`Labour Name: ${labour.name}`, 14, 32);
+    doc.text(`Login ID: ${(labour as any).loginId || "-"}`, 14, 40);
+    doc.text(`Mobile: ${labour.phone || "-"}`, 14, 48);
+    doc.text(`Location: ${labour.paya || "-"}`, 14, 56);
+    
+    doc.setFontSize(12);
+    doc.text(`Total Kamai: Rs ${lifetimeEarned.toLocaleString()}`, 120, 32);
+    doc.text(`Total Kharcha: Rs ${lifetimeKharcha.toLocaleString()}`, 120, 40);
+    doc.text(`Total Peshgi: Rs ${lifetimePeshgi.toLocaleString()}`, 120, 48);
+    
+    doc.setFont("helvetica", "bold");
+    if(grandTotal < 0) {
+      doc.setTextColor(220, 38, 38); 
+      const text = isAdmin ? "(Labour Par Nikal Rahe Hain)" : "(Aap par Advance nikal raha hai)";
+      doc.text(`Final Balance: Rs ${Math.abs(grandTotal).toLocaleString()} ${text}`, 120, 56);
+    } else {
+      doc.setTextColor(16, 185, 129); 
+      const text = isAdmin ? "(Labour Ko Dene Hain)" : "(Aapko lene hain)";
+      doc.text(`Final Balance: Rs ${grandTotal.toLocaleString()} ${text}`, 120, 56);
+    }
+
+    const tableData = (labour.entries || [])
+      .filter((e:any) => e.payeCount > 0 || e.kharcha > 0 || e.peshgi !== 0 || e.remark)
+      .map((e:any) => [
+        e.date,
+        e.payeCount || 0,
+        (e.payeCount || 0) * (e.customRatePerPaya !== undefined ? e.customRatePerPaya : (labour.ratePerPaya || 0)),
+        e.kharcha || 0,
+        e.peshgi || 0,
+        e.remark || "-"
+      ]);
+
+    autoTable(doc, {
+      startY: 65,
+      head: [['Date', 'Paye', 'Earned', 'Kharcha', 'Peshgi', 'Remark']],
+      body: tableData,
+      theme: 'grid',
+      headStyles: { fillColor: [30, 64, 175] }
+    });
+
+    doc.save(`${labour.name}_Full_Parchi.pdf`);
+  };
+
   let monthTotalPaye = 0;
   let monthTotalEarnings = 0;
   let monthTotalExpenses = 0;
@@ -174,7 +228,6 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
     <div className="min-h-screen bg-[#0f172a] text-white p-4 md:p-8 font-sans pb-20 selection:bg-blue-500/30">
       <div className="max-w-7xl mx-auto space-y-6">
 
-        {/* Header */}
         <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
           <div className="flex items-center gap-4">
             {isAdmin && (
@@ -183,13 +236,20 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
               </Link>
             )}
             <div>
-              <h1 className="text-2xl md:text-4xl font-extrabold tracking-tight bg-gradient-to-r from-emerald-400 via-cyan-400 to-blue-400 bg-clip-text text-transparent drop-shadow-sm">
-                {labour.name}
+              <h1 className="text-2xl md:text-4xl font-extrabold tracking-tight bg-gradient-to-r from-emerald-400 via-cyan-400 to-blue-400 bg-clip-text text-transparent drop-shadow-sm flex items-center gap-3">
+                {labour.name} 
+                {(labour as any).loginId && (
+                  <span className="text-sm md:text-xl font-bold bg-blue-900/30 text-blue-400 border border-blue-500/30 px-3 py-1 rounded-lg">
+                    ID: {(labour as any).loginId}
+                  </span>
+                )}
               </h1>
               <div className="flex flex-wrap gap-2 md:gap-3 mt-2">
-                <span className="text-emerald-300 text-xs md:text-sm font-medium bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20 flex items-center gap-1.5 backdrop-blur-sm">
-                  <IndianRupee className="w-3.5 h-3.5" /> Rate/Paye: ₹{defaultPayeRate}
-                </span>
+                {isAdmin && ( 
+                  <span className="text-emerald-300 text-xs md:text-sm font-medium bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20 flex items-center gap-1.5 backdrop-blur-sm">
+                    <IndianRupee className="w-3.5 h-3.5" /> Rate/Paye: ₹{defaultPayeRate}
+                  </span>
+                )}
                 <span className="text-blue-300 text-xs md:text-sm font-medium bg-blue-500/10 px-3 py-1 rounded-full border border-blue-500/20 flex items-center gap-1.5 backdrop-blur-sm">
                   <Layers className="w-3.5 h-3.5" /> Work Location: {labour.paya || "-"}
                 </span>
@@ -201,7 +261,6 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
           </button>
         </div>
 
-        {/* ================= GRAND TOTAL SECTION ================= */}
         <div className="bg-slate-800/60 border border-slate-700/80 rounded-3xl p-5 md:p-8 shadow-2xl relative overflow-hidden">
           <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
             
@@ -212,7 +271,9 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
               <h2 className={`text-4xl md:text-5xl font-extrabold ${grandTotal < 0 ? 'text-rose-500' : 'text-emerald-400'}`}>
                 {grandTotal < 0 ? "-" : ""}₹{Math.abs(grandTotal).toLocaleString()}
                 <span className="block md:inline-block text-sm md:text-lg font-semibold ml-0 md:ml-3 mt-1 md:mt-0 text-slate-300 opacity-90">
-                  {grandTotal < 0 ? "(Labour Par Nikal Rahe Hain)" : "(Labour Ko Dene Hain)"}
+                  {grandTotal < 0 
+                    ? (isAdmin ? "(Labour Par Nikal Rahe Hain)" : "(Aap par Advance nikal raha hai)") 
+                    : (isAdmin ? "(Labour Ko Dene Hain)" : "(Aapko Bhatte se lene hain)")}
                 </span>
               </h2>
               
@@ -223,27 +284,36 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
               </div>
             </div>
 
-            {/* Toggle Button */}
-            <div className="bg-slate-900/80 p-1.5 rounded-xl border border-slate-700 w-full lg:w-auto flex shrink-0">
+            {/* Toggle Button & Download Icon */}
+            <div className="flex items-center gap-3 w-full lg:w-auto shrink-0 mt-4 lg:mt-0">
+              <div className="bg-slate-900/80 p-1.5 rounded-xl border border-slate-700 w-full lg:w-auto flex flex-1 lg:flex-none">
+                <button 
+                  onClick={() => setIncludePeshgi(true)} 
+                  className={`flex-1 lg:flex-none px-4 py-2.5 rounded-lg text-sm font-bold transition-all ${includePeshgi ? "bg-blue-600 text-white shadow-md" : "text-slate-400 hover:text-white"}`}
+                >
+                  Include Peshgi
+                </button>
+                <button 
+                  onClick={() => setIncludePeshgi(false)} 
+                  className={`flex-1 lg:flex-none px-4 py-2.5 rounded-lg text-sm font-bold transition-all ${!includePeshgi ? "bg-slate-600 text-white shadow-md" : "text-slate-400 hover:text-white"}`}
+                >
+                  Exclude Peshgi
+                </button>
+              </div>
+
+              {/* Small Download Icon */}
               <button 
-                onClick={() => setIncludePeshgi(true)} 
-                className={`flex-1 lg:flex-none px-4 py-2.5 rounded-lg text-sm font-bold transition-all ${includePeshgi ? "bg-blue-600 text-white shadow-md" : "text-slate-400 hover:text-white"}`}
+                onClick={downloadMyParchi} 
+                title="Download PDF Parchi"
+                className="p-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl transition-all shadow-md active:scale-95 border border-indigo-500/50 flex-shrink-0"
               >
-                Include Peshgi
-              </button>
-              <button 
-                onClick={() => setIncludePeshgi(false)} 
-                className={`flex-1 lg:flex-none px-4 py-2.5 rounded-lg text-sm font-bold transition-all ${!includePeshgi ? "bg-slate-600 text-white shadow-md" : "text-slate-400 hover:text-white"}`}
-              >
-                Exclude Peshgi
+                <Download size={22}/>
               </button>
             </div>
 
           </div>
         </div>
-        {/* ================= END GRAND TOTAL SECTION ================= */}
 
-        {/* Month Selector & Monthly Summary */}
         <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 md:gap-5">
           <div className="col-span-2 xl:col-span-1 bg-slate-800/80 backdrop-blur-xl border border-slate-700/50 p-4 rounded-2xl flex items-center justify-between shadow-lg">
             <button onClick={() => { if(currentMonth===0){setCurrentMonth(11); setCurrentYear(p=>p-1);} else setCurrentMonth(p=>p-1); }} className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm font-medium transition-colors">Prev</button>
@@ -269,7 +339,6 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
           </div>
         </div>
 
-        {/* View Toggle */}
         <div className="md:hidden flex justify-end items-center px-1">
           <div className="bg-slate-800 p-1 rounded-xl flex items-center gap-1 border border-slate-700 shadow-inner">
             <button onClick={() => setViewMode("card")} className={`px-4 py-1.5 rounded-lg flex items-center gap-2 text-xs font-semibold transition-all ${isCard ? "bg-slate-600 text-white shadow-md" : "text-slate-400 hover:text-white"}`}><LayoutList size={14}/> Cards</button>
@@ -277,7 +346,6 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
           </div>
         </div>
 
-        {/* Table/Card View */}
         <div className="bg-slate-800/40 backdrop-blur-md border border-slate-700/60 rounded-2xl md:rounded-3xl shadow-xl overflow-x-auto relative">
           <table className={`w-full text-left border-collapse ${isCard ? "block md:table" : "min-w-[700px]"}`}>
             <thead className={`${isCard ? "hidden md:table-header-group" : ""} bg-slate-800/80 text-slate-300 text-xs tracking-widest uppercase border-b border-slate-700/60`}>
@@ -287,7 +355,7 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
                 <th className="p-4 md:px-6 font-semibold text-cyan-400">Daily Earning</th>
                 <th className="p-4 md:px-6 font-semibold text-orange-400">Expenses</th>
                 {isAdmin && <th className="p-4 md:px-6 font-semibold text-center w-32">Actions</th>}
-                {!isAdmin && <th className="p-4 md:px-6 font-semibold text-blue-300">Remark / Note</th>}
+                {!isAdmin && <th className="p-4 md:px-6 font-semibold text-blue-300 w-52">Remark / Note</th>}
               </tr>
             </thead>
 
@@ -303,24 +371,22 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
 
                 const hasEntry = payeCount > 0 || kharcha > 0 || remark !== "";
                 const isEditingThisRow = editingRowDate === formattedDate && isAdmin;
-                const isEditingRemarkThisRow = editingRemark?.date === formattedDate && isAdmin;
+                const isEditingRemarkThisRow = editingRemark?.date === formattedDate; 
 
                 const liveEarning = (Number(editPaye) || 0) * activePayeRate;
 
                 return (
                   <tr key={day} className={`${isCard 
-                    ? `block md:table-row rounded-xl md:rounded-none md:bg-transparent border md:border-none transition-colors duration-200 ${hasEntry || isEditingThisRow ? 'bg-slate-800/80 border-slate-700 shadow-md' : 'bg-slate-800/30 border-slate-700/50 hover:bg-slate-800/60'}`
+                    ? `block md:table-row rounded-xl md:rounded-none md:bg-transparent border md:border-none transition-colors duration-200 ${hasEntry || isEditingThisRow || isEditingRemarkThisRow ? 'bg-slate-800/80 border-slate-700 shadow-md' : 'bg-slate-800/30 border-slate-700/50 hover:bg-slate-800/60'}`
                     : `hover:bg-slate-700/30 transition-colors duration-150 ${hasEntry || isEditingThisRow ? 'bg-slate-800/40' : ''}`
                   }`}>
 
-                    {/* Date */}
                     <td className={isCard ? "flex justify-between items-center md:table-cell p-3 md:px-6 md:py-4 border-b md:border-b-0 border-slate-700/50 font-medium" : "p-4 md:px-6 font-medium text-slate-300"}>
                       {isCard && <span className="md:hidden text-xs text-slate-500 uppercase tracking-wider font-bold">Date</span>}
                       <span className="whitespace-nowrap">{String(day).padStart(2, '0')} {monthNames[currentMonth]}</span>
                     </td>
 
-                    {/* Paye Details */}
-                    <td className={isCard ? `${!hasEntry && !isEditingThisRow ? 'hidden' : 'flex'} justify-between items-center md:table-cell p-3 md:px-6 md:py-4 border-b md:border-b-0 border-slate-700/50` : "p-4 md:px-6 font-medium text-emerald-300"}>
+                    <td className={isCard ? `${!hasEntry && !isEditingThisRow && !isEditingRemarkThisRow ? 'hidden' : 'flex'} justify-between items-center md:table-cell p-3 md:px-6 md:py-4 border-b md:border-b-0 border-slate-700/50` : "p-4 md:px-6 font-medium text-emerald-300"}>
                       {isCard && <span className="md:hidden text-[10px] text-slate-500 uppercase font-bold tracking-widest">Paye</span>}
                       {isEditingThisRow ? (
                         <div className="flex items-center gap-2 w-fit">
@@ -329,13 +395,17 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
                         </div>
                       ) : (
                         <span className={payeCount > 0 ? "text-emerald-400 font-bold" : "text-slate-600"}>
-                          {payeCount > 0 ? <>{payeCount} <span className="text-slate-500 text-xs ml-1 font-normal" title="Rate">(@ ₹{activePayeRate})</span></> : '-'}
+                          {payeCount > 0 ? (
+                            <>
+                              {payeCount} 
+                              {isAdmin && <span className="text-slate-500 text-xs ml-1 font-normal" title="Rate">(@ ₹{activePayeRate})</span>}
+                            </>
+                          ) : '-'}
                         </span>
                       )}
                     </td>
 
-                    {/* Daily Earning */}
-                    <td className={isCard ? `${!hasEntry && !isEditingThisRow ? 'hidden' : 'flex'} justify-between items-center md:table-cell p-3 md:px-6 md:py-4 border-b md:border-b-0 border-slate-700/50` : "p-4 md:px-6 font-medium text-cyan-300"}>
+                    <td className={isCard ? `${!hasEntry && !isEditingThisRow && !isEditingRemarkThisRow ? 'hidden' : 'flex'} justify-between items-center md:table-cell p-3 md:px-6 md:py-4 border-b md:border-b-0 border-slate-700/50` : "p-4 md:px-6 font-medium text-cyan-300"}>
                       {isCard && <span className="md:hidden text-[10px] text-slate-500 uppercase font-bold tracking-widest">Earned</span>}
                       {isEditingThisRow ? (
                         <span className="text-cyan-400 font-bold px-2 bg-cyan-900/20 py-1 rounded-md border border-cyan-500/20">₹{liveEarning.toFixed(0)}</span>
@@ -344,8 +414,7 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
                       )}
                     </td>
 
-                    {/* Expenses */}
-                    <td className={isCard ? `${!hasEntry && !isEditingThisRow ? 'hidden' : 'flex'} justify-between items-center md:table-cell p-3 md:px-6 md:py-4 border-b md:border-b-0 border-slate-700/50` : "p-4 md:px-6 font-medium text-orange-300"}>
+                    <td className={isCard ? `${!hasEntry && !isEditingThisRow && !isEditingRemarkThisRow ? 'hidden' : 'flex'} justify-between items-center md:table-cell p-3 md:px-6 md:py-4 border-b md:border-b-0 border-slate-700/50` : "p-4 md:px-6 font-medium text-orange-300"}>
                       {isCard && <span className="md:hidden text-[10px] text-slate-500 uppercase font-bold tracking-widest">Expenses</span>}
                       {isEditingThisRow ? (
                         <div className="flex items-center gap-2 w-fit relative">
@@ -357,7 +426,6 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
                       )}
                     </td>
                     
-                    {/* Actions (ONLY FOR ADMIN) */}
                     {isAdmin && (
                       <td className={`p-3 md:px-6 md:py-4 align-middle text-center ${isCard ? 'flex justify-between items-center md:table-cell border-t border-slate-700/30 mt-2' : ''}`}>
                         {isCard && <span className="md:hidden text-[10px] text-blue-400/70 uppercase font-bold tracking-widest">Actions</span>}
@@ -390,13 +458,26 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
                       </td>
                     )}
 
-                    {/* FOR NON-ADMIN (USER): Only show Remark if it exists */}
                     {!isAdmin && (
-                      <td className={isCard ? `${!remark ? 'hidden' : 'flex'} justify-between items-center md:table-cell p-3 md:px-6 md:py-4 border-b md:border-b-0 border-slate-700/50` : "p-4 md:px-6 font-medium text-blue-300"}>
+                      <td className={isCard ? `flex justify-between items-center md:table-cell p-3 md:px-6 md:py-4 border-b md:border-b-0 border-slate-700/50` : "p-4 md:px-6 font-medium text-blue-300"}>
                         {isCard && <span className="md:hidden text-[10px] text-slate-500 uppercase font-bold tracking-widest">Remark</span>}
-                        <span>{remark ? remark : '-'}</span>
+                        
+                        {isEditingRemarkThisRow ? (
+                          <form onSubmit={(e) => { e.preventDefault(); handleSaveRemark(formattedDate); }} className="flex items-center gap-1.5 w-full max-w-[220px]">
+                            <input type="text" autoFocus value={editingRemark.text} onChange={(e) => setEditingRemark({ ...editingRemark, text: e.target.value })} className="flex-1 bg-slate-900 border border-slate-700 rounded-md px-2 py-1.5 text-xs text-blue-200 outline-none focus:border-blue-500" placeholder="Apna note likhein..."/>
+                            <button type="submit" className="p-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-md transition-colors"><Check size={14} /></button>
+                          </form>
+                        ) : (
+                          <div className={`flex items-center ${isCard ? 'justify-end' : ''} gap-3`}>
+                            <span className="text-slate-300 text-sm whitespace-pre-wrap">{remark ? remark : <span className="text-slate-600 italic">No remark</span>}</span>
+                            <button onClick={() => setEditingRemark({ date: formattedDate, text: remark })} className={`p-1.5 rounded-md transition border flex shrink-0 ${remark ? 'bg-blue-500/10 border-blue-500/20 text-blue-400 hover:bg-blue-500/20' : 'border-dashed border-slate-600/50 text-slate-500 hover:text-slate-300 hover:bg-slate-700/30'}`} title="Add/Edit Remark">
+                              {remark ? <Edit3 size={14} /> : <MessageSquare size={14} />}
+                            </button>
+                          </div>
+                        )}
                       </td>
                     )}
+
                   </tr>
                 );
               })}
