@@ -63,13 +63,13 @@ export default function AdminDashboard() {
   const [editingLabourId, setEditingLabourId] = useState<string | null>(null);
   const [editLabourData, setEditLabourData] = useState<{name: string, loginId: string, phone: string, paya: string, payeRate: number} | null>(null);
 
-  // NAYA: Modals for Delete & Password Reset
   const [deleteLabourId, setDeleteLabourId] = useState<string | null>(null);
   const [resetPasswordId, setResetPasswordId] = useState<string | null>(null);
   const [newPasswordInput, setNewPasswordInput] = useState("");
   
-  // NAYA: Notifications state
+  // Notifications state
   const [showNotifications, setShowNotifications] = useState(false);
+  const [lastSeenNotifId, setLastSeenNotifId] = useState<string | null>(null);
 
   const showToast = (msg: string, type: "success" | "error" = "success") => {
     setToast({ msg, type });
@@ -86,6 +86,10 @@ export default function AdminDashboard() {
     // Load Theme
     const savedTheme = localStorage.getItem("app_theme") as "dark" | "light";
     if (savedTheme) setTheme(savedTheme);
+
+    // NAYA: Load Last Seen Notification ID
+    const savedNotifId = localStorage.getItem("bhatta_last_notif_id");
+    if (savedNotifId) setLastSeenNotifId(savedNotifId);
 
     // Load Admins
     const savedAdmins = JSON.parse(localStorage.getItem("bhatta_admins") || "[]");
@@ -152,7 +156,6 @@ export default function AdminDashboard() {
     router.push("/");
   };
 
-  // NAYA: Handle Admin Delete Labour
   const handleDeleteLabour = () => {
     if (!deleteLabourId) return;
     const updated = labourers.filter(l => l.id !== deleteLabourId);
@@ -162,7 +165,6 @@ export default function AdminDashboard() {
     showToast("User account successfully deleted!", "success");
   };
 
-  // NAYA: Handle Reset Password
   const handleResetPassword = (e: React.FormEvent) => {
     e.preventDefault();
     if (!resetPasswordId || !newPasswordInput) return showToast("Password cannot be empty!", "error");
@@ -179,7 +181,6 @@ export default function AdminDashboard() {
     showToast("Naya password set ho gaya!", "success");
   };
 
-  // Admin Role Management Handlers
   const handleAddAdmin = (e: React.FormEvent) => {
     e.preventDefault();
     if(!newAdminId) return;
@@ -207,7 +208,7 @@ export default function AdminDashboard() {
   const currentLabourers = labourers.filter(lab => lab.bhattaId === activeBhattaId);
   const activeBhattaName = bhattas.find(b => b.id === activeBhattaId)?.name || "Bhatta";
 
-  // NAYA: Extract Notifications from Remarks
+  // Extract Notifications from Remarks
   const notifications = currentLabourers.flatMap(lab => 
     (lab.entries || [])
       .filter((e: any) => e.remark && e.remark.trim() !== "")
@@ -218,7 +219,21 @@ export default function AdminDashboard() {
         date: e.date,
         remark: e.remark
       }))
-  ).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 15); // Latest 15 remarks
+  ).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 15);
+
+  // NAYA: Unread Status Logic
+  const hasUnreadNotifications = notifications.length > 0 && notifications[0].id !== lastSeenNotifId;
+
+  const toggleNotifications = () => {
+    const newState = !showNotifications;
+    setShowNotifications(newState);
+    
+    // Agar open kar raha hai, toh red dot hata do
+    if (newState && notifications.length > 0) {
+      setLastSeenNotifId(notifications[0].id);
+      localStorage.setItem("bhatta_last_notif_id", notifications[0].id);
+    }
+  };
 
   const overallStats = currentLabourers.reduce((acc, lab) => {
     let earned = 0;
@@ -589,26 +604,31 @@ export default function AdminDashboard() {
         </div>
         <div className="flex items-center gap-2 md:gap-3">
           
-          {/* NAYA: Notification Bell */}
+          {/* 🔔 Notification Bell */}
           <div className="relative">
-            <button onClick={() => setShowNotifications(!showNotifications)} className={`p-2 rounded-full transition-colors relative ${isDark ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-100 text-slate-600'}`}>
+            <button onClick={toggleNotifications} className={`p-2 rounded-full transition-colors relative ${isDark ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-100 text-slate-600'}`}>
               <Bell size={20} />
-              {notifications.length > 0 && <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-rose-500 rounded-full border border-[#0f172a] animate-pulse"></span>}
+              {hasUnreadNotifications && <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-rose-500 rounded-full border border-[#0f172a] animate-pulse"></span>}
             </button>
             {showNotifications && (
               <div className={`absolute right-0 mt-2 w-80 max-h-[400px] overflow-y-auto custom-scrollbar rounded-xl border shadow-2xl p-2 animate-in fade-in zoom-in-95 duration-200 ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
                 <div className="px-3 py-2 border-b mb-2 flex justify-between items-center sticky top-0 bg-inherit z-10">
                   <h3 className={`font-bold text-sm ${textMain}`}>Recent Labour Notes</h3>
-                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500'}`}>{notifications.length} New</span>
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500'}`}>{notifications.length} Total</span>
                 </div>
                 {notifications.length === 0 ? (
                   <p className={`p-4 text-center text-xs ${textMuted}`}>No notifications yet.</p>
                 ) : (
                   <div className="space-y-1">
                     {notifications.map(notif => (
-                      <div key={notif.id} className={`p-3 rounded-lg flex flex-col gap-1 transition-colors cursor-default ${isDark ? 'hover:bg-slate-800' : 'hover:bg-slate-50'}`}>
+                      <div 
+                        key={notif.id} 
+                        // Click karne par seedha user profile open hogi
+                        onClick={() => { router.push(`/labour/${notif.labId}`); setShowNotifications(false); }}
+                        className={`p-3 rounded-lg flex flex-col gap-1 transition-colors cursor-pointer ${isDark ? 'hover:bg-slate-800' : 'hover:bg-slate-50'}`}
+                      >
                         <div className="flex justify-between items-start">
-                          <span className={`text-xs font-bold ${textMain}`}>{notif.labName}</span>
+                          <span className={`text-xs font-bold ${textMain} hover:text-blue-500 transition-colors`}>{notif.labName}</span>
                           <span className={`text-[10px] ${textMuted}`}>{notif.date}</span>
                         </div>
                         <p className={`text-xs italic bg-opacity-50 p-1.5 rounded border ${isDark ? 'text-blue-300 bg-blue-900/20 border-blue-500/20' : 'text-blue-700 bg-blue-50 border-blue-200'}`}>"{notif.remark}"</p>
@@ -825,11 +845,10 @@ export default function AdminDashboard() {
                           <td className="p-3">
                             <div className="flex items-center justify-center gap-2">
                               {isEditing ? (
-                                <button onClick={() => handleSaveLabourEdit(lab.id)} className="bg-emerald-600 hover:bg-emerald-500 px-4 py-1.5 rounded-lg text-white font-bold transition-all shadow-md active:scale-95 flex items-center gap-1"><Check size={14}/> Save</button>
+                                <button onClick={() => handleSaveLabourEdit(lab.id)} className="bg-emerald-600 hover:bg-emerald-500 px-4 py-1.5 rounded-lg text-white font-bold transition-all shadow-md active:scale-95 flex items-center gap-1 mx-auto"><Check size={14}/> Save</button>
                               ) : (
                                 <>
                                   <button onClick={() => { setEditingLabourId(lab.id); setEditLabourData({name: lab.name, loginId: lab.loginId, phone: lab.phone, paya: lab.paya || "", payeRate: lab.ratePerPaya || 0}); }} className={`px-4 py-1.5 rounded-lg font-bold transition-all active:scale-95 ${isDark ? 'bg-slate-700 hover:bg-slate-600 text-slate-200' : 'bg-white border border-slate-300 shadow-sm hover:bg-slate-50 text-slate-700'}`}>Edit</button>
-                                  {/* NAYA: Password Reset & Delete Controls */}
                                   <button onClick={() => setResetPasswordId(lab.id)} className={`p-1.5 rounded-lg transition-colors border ${isDark ? 'bg-slate-800 border-slate-700 hover:bg-blue-500/20 hover:text-blue-400 text-slate-400' : 'bg-white border-slate-300 hover:bg-blue-50 hover:text-blue-600 text-slate-500 shadow-sm'}`} title="Create/Reset Password">
                                     <Key size={16} />
                                   </button>
