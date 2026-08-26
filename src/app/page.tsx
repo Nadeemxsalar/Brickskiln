@@ -1,8 +1,8 @@
 "use client";
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { getLabourData, saveLabourData } from "../lib/storage";
-import { User, Lock, LogIn, UserPlus, Phone, AlertCircle, CheckCircle, ArrowRight, Building2, Users, Receipt, ShieldCheck, Zap, X, Sun, Moon } from "lucide-react";
+import { getLabourData, saveLabourData, fetchFromFirebase } from "../lib/storage";
+import { User, Lock, LogIn, UserPlus, Phone, AlertCircle, CheckCircle, ArrowRight, Building2, Users, Receipt, ShieldCheck, Zap, X, Sun, Moon, CloudDownload, Mail } from "lucide-react";
 
 // Google Icon SVG
 const GoogleIcon = () => (
@@ -21,21 +21,41 @@ export default function HomeAuthPage() {
   const [isAnimating, setIsAnimating] = useState(false);
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   
+  const [isSyncing, setIsSyncing] = useState(true);
+  
   const [id, setId] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
+  const [contact, setContact] = useState(""); // NAYA: Phone/Email combined state
   
   const [toast, setToast] = useState<{msg: string, type: "success" | "error"} | null>(null);
 
   useEffect(() => {
-    const session = localStorage.getItem("bhatta_session");
-    if (session === "admin") router.push("/admin");
-    else if (session?.startsWith("user_")) router.push(`/labour/${session.split("_")[1]}`);
-    
-    // Load saved theme if any
     const savedTheme = localStorage.getItem("app_theme") as "dark" | "light";
     if (savedTheme) setTheme(savedTheme);
+
+    const syncWithCloud = async () => {
+      try {
+        const cloudLab = await fetchFromFirebase("bhatta_labourers");
+        if (cloudLab) localStorage.setItem("bhatta_labourers", JSON.stringify(cloudLab));
+        
+        const cloudBhatta = await fetchFromFirebase("bhattas_list");
+        if (cloudBhatta) localStorage.setItem("bhattas_list", JSON.stringify(cloudBhatta));
+        
+        const cloudAdmins = await fetchFromFirebase("bhatta_admins");
+        if (cloudAdmins) localStorage.setItem("bhatta_admins", JSON.stringify(cloudAdmins));
+
+      } catch (error) {
+        console.error("Cloud Sync Error:", error);
+      } finally {
+        setIsSyncing(false);
+        const session = localStorage.getItem("bhatta_session");
+        if (session === "admin") router.push("/admin");
+        else if (session?.startsWith("user_")) router.push(`/labour/${session.split("_")[1]}`);
+      }
+    };
+
+    syncWithCloud();
   }, [router]);
 
   const toggleTheme = () => {
@@ -63,11 +83,10 @@ export default function HomeAuthPage() {
     e.preventDefault();
     if (!id || !password) return showToast("ID and Password are required!", "error");
 
-    // 👑 MASTER ADMIN CREDENTIALS (Aapke naye credentials)
-    const adminIdentifiers = ["admin", "nadeemxsalar@gmail.com", "realheronadeem", "9368218331"]; 
+    const savedAdmins = JSON.parse(localStorage.getItem("bhatta_admins") || "[]");
+    const adminIdentifiers = ["admin", "nadeemxsalar@gmail.com", "realheronadeem", "9368218331", ...savedAdmins]; 
     const adminPasswords = ["admin123", "@Nadeem20"];
 
-    // Agar enter ki gayi ID/Email/Number Admin list mein hai
     if (adminIdentifiers.includes(id.toLowerCase())) {
       if (adminPasswords.includes(password)) {
         localStorage.setItem("bhatta_session", "admin");
@@ -79,8 +98,8 @@ export default function HomeAuthPage() {
       return; 
     }
 
-    // 👷 LABOUR LOGIN CHECK (Agar admin nahi hai toh labour check karega)
     const labourers = getLabourData("bhatta_labourers") || [];
+    // Smart Login: Check against Auto ID or the Contact (Phone/Email)
     const labour = labourers.find((l: any) => l.loginId === id || l.phone === id);
 
     if (labour) {
@@ -110,7 +129,11 @@ export default function HomeAuthPage() {
 
     const labourers = getLabourData("bhatta_labourers") || [];
     
-    // Auto-generate ID logic
+    // Check if the email/phone is already registered
+    if (contact && labourers.some((l: any) => l.phone === contact)) {
+      return showToast("This Phone/Email is already registered!", "error");
+    }
+
     let maxId = 1000;
     labourers.forEach((l: any) => {
       const num = parseInt(l.loginId, 10);
@@ -119,7 +142,7 @@ export default function HomeAuthPage() {
     const newLoginId = (maxId + 1).toString();
 
     const newLabour: any = {
-      id: Date.now().toString(), bhattaId: "bhatta_default", name, loginId: newLoginId, password, phone, ratePerThousand: 0, ratePerPaya: 0, paya: "-", totalBricks: 0, totalPaye: 0, totalKharcha: 0, totalPeshgi: 0, entries: []
+      id: Date.now().toString(), bhattaId: "bhatta_default", name, loginId: newLoginId, password, phone: contact, ratePerThousand: 0, ratePerPaya: 0, paya: "-", totalBricks: 0, totalPaye: 0, totalKharcha: 0, totalPeshgi: 0, entries: []
     };
 
     const updatedList = [...labourers, newLabour];
@@ -130,7 +153,7 @@ export default function HomeAuthPage() {
   };
 
   const handleGoogleAuth = () => {
-    showToast("Google Firebase integration coming soon!", "success");
+    showToast("Google Authentication system coming soon!", "success");
   };
 
   // Theming Classes
@@ -146,6 +169,22 @@ export default function HomeAuthPage() {
   const textMuted = isDark ? "text-slate-400" : "text-slate-500";
   const headingTextClass = isDark ? "text-white" : "text-slate-900";
   const btnSecondary = isDark ? "bg-slate-800 hover:bg-slate-700 text-white border-slate-700" : "bg-white hover:bg-slate-50 text-slate-800 border-slate-200 shadow-md";
+
+  if (isSyncing) {
+    return (
+      <div className={`min-h-screen flex flex-col items-center justify-center transition-colors duration-500 ${bgMain}`}>
+        <div className="relative flex items-center justify-center mb-6">
+          <div className="absolute inset-0 bg-blue-500/20 blur-xl rounded-full w-24 h-24 animate-pulse"></div>
+          <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin z-10"></div>
+          <CloudDownload size={24} className="absolute text-blue-500 z-10" />
+        </div>
+        <h2 className="text-xl md:text-2xl font-extrabold tracking-tight bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent animate-pulse">
+          Syncing with Cloud...
+        </h2>
+        <p className={`text-sm mt-2 font-medium ${textMuted}`}>Fetching your secure ledger data.</p>
+      </div>
+    );
+  }
 
   return (
     <div className={`min-h-screen font-sans selection:bg-emerald-500/30 relative overflow-hidden transition-colors duration-500 ${bgMain}`}>
@@ -286,7 +325,7 @@ export default function HomeAuthPage() {
                   <form onSubmit={handleLogin} className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
                     <div className="relative">
                       <User size={20} className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400" />
-                      <input type="text" value={id} onChange={(e) => setId(e.target.value)} placeholder="Enter ID, Email or Phone" className={`w-full rounded-xl pl-12 pr-4 py-4 text-base md:text-sm outline-none transition-all border ${inputClass}`} required />
+                      <input type="text" value={id} onChange={(e) => setId(e.target.value)} placeholder="Email, Phone or ID" className={`w-full rounded-xl pl-12 pr-4 py-4 text-base md:text-sm outline-none transition-all border ${inputClass}`} required />
                     </div>
                     <div className="relative">
                       <Lock size={20} className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400" />
@@ -304,8 +343,8 @@ export default function HomeAuthPage() {
                       <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Full Name" className={`w-full rounded-xl pl-12 pr-4 py-4 text-base md:text-sm outline-none transition-all border ${inputClass}`} required />
                     </div>
                     <div className="relative">
-                      <Phone size={20} className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400" />
-                      <input type="text" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Mobile Number" className={`w-full rounded-xl pl-12 pr-4 py-4 text-base md:text-sm outline-none transition-all border ${inputClass}`} />
+                      <Mail size={20} className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400" />
+                      <input type="text" value={contact} onChange={(e) => setContact(e.target.value)} placeholder="Phone Number or Email" className={`w-full rounded-xl pl-12 pr-4 py-4 text-base md:text-sm outline-none transition-all border ${inputClass}`} />
                     </div>
                     <div className="relative">
                       <Lock size={20} className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400" />
@@ -319,7 +358,7 @@ export default function HomeAuthPage() {
                 )}
               </div>
 
-              {/* 🟢 Animated Google Icon (GIF-Style Pulse) */}
+              {/* 🟢 Animated Google Icon */}
               <div className="mt-10 mb-4 w-full flex flex-col items-center">
                 <span className={`${textMuted} text-xs uppercase tracking-widest font-bold mb-6`}>Or continue with</span>
                 
@@ -329,13 +368,8 @@ export default function HomeAuthPage() {
                   className="relative flex items-center justify-center w-16 h-16 bg-white rounded-full shadow-lg hover:shadow-2xl transition-all hover:scale-110 active:scale-95 group"
                   title="Sign in with Google"
                 >
-                  {/* Outer Pulsing Animation Ring */}
                   <div className="absolute inset-0 rounded-full animate-ping opacity-25 bg-blue-500"></div>
-                  
-                  {/* Inner Rotating/Glowing Ring on Hover */}
                   <div className="absolute -inset-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity bg-gradient-to-r from-blue-400 via-emerald-400 to-yellow-400 blur-sm animate-spin-slow"></div>
-                  
-                  {/* Main Icon Box */}
                   <div className="relative z-10 w-full h-full bg-white rounded-full flex items-center justify-center">
                     <GoogleIcon />
                   </div>
