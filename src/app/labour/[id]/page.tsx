@@ -3,7 +3,8 @@ import { useEffect, useState, use } from "react";
 import { useRouter } from "next/navigation";
 import { getLabourData, saveLabourData } from "../../../lib/storage";
 import { Labour } from "../../../types";
-import { IndianRupee, ArrowLeft, Layers, MessageSquare, MessageSquareText, Check, LayoutList, Table, Edit3, X, PlusCircle, LogOut, Calculator, Download } from "lucide-react";
+// NAYA: UserMinus icon import kiya gaya hai chhutti ke liye
+import { IndianRupee, ArrowLeft, Layers, MessageSquare, MessageSquareText, Check, LayoutList, Table, Edit3, X, PlusCircle, LogOut, Calculator, Download, UserMinus } from "lucide-react";
 import Link from "next/link";
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -75,7 +76,7 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
 
         if (!entryExists && editingRemark.text.trim() !== "") {
           updatedEntries.push({ 
-            id: Date.now().toString() + Math.random().toString(), date: dateStr, payeCount: 0, customRatePerPaya: l.ratePerPaya || 0, kharcha: 0, peshgi: 0, remark: editingRemark.text 
+            id: Date.now().toString() + Math.random().toString(), date: dateStr, payeCount: 0, customRatePerPaya: l.ratePerPaya || 0, kharcha: 0, peshgi: 0, remark: editingRemark.text, isLeave: false 
           });
         }
         const updatedL = { ...l, entries: updatedEntries };
@@ -111,7 +112,7 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
         });
 
         if (!entryFound && (newPaye > 0 || newKharcha > 0)) {
-          updatedEntries.push({ id: Date.now().toString() + Math.random().toString(), date: dateStr, payeCount: newPaye, customRatePerPaya: currentDefaultRate, kharcha: newKharcha, peshgi: 0 });
+          updatedEntries.push({ id: Date.now().toString() + Math.random().toString(), date: dateStr, payeCount: newPaye, customRatePerPaya: currentDefaultRate, kharcha: newKharcha, peshgi: 0, isLeave: false });
         }
 
         totalPayeSum = updatedEntries.reduce((sum: number, e: any) => sum + (e.payeCount || 0), 0);
@@ -126,6 +127,43 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
 
     saveLabourData("bhatta_labourers", updatedLabourers);
     setEditingRowDate(null);
+  };
+
+  // NAYA: Admin ke liye Individual Chhutti lagane ka function
+  const handleToggleLeave = (dateStr: string) => {
+    if (!isAdmin) return;
+    const allLabourers = getLabourData("bhatta_labourers") || [];
+    
+    const updatedLabourers = allLabourers.map((l: any) => {
+      if (l.id === labour.id) {
+        let entryExists = false;
+        const updatedEntries = (Array.isArray(l.entries) ? l.entries : []).map((e: any) => {
+          if (e.date === dateStr) {
+            entryExists = true;
+            return { ...e, isLeave: !e.isLeave };
+          }
+          return e;
+        });
+
+        if (!entryExists) {
+          updatedEntries.push({ 
+            id: Date.now().toString() + Math.random().toString(), 
+            date: dateStr, 
+            payeCount: 0, 
+            customRatePerPaya: l.ratePerPaya || 0,
+            kharcha: 0, 
+            peshgi: 0, 
+            isLeave: true 
+          });
+        }
+        
+        const updatedL = { ...l, entries: updatedEntries };
+        setLabour(updatedL); 
+        return updatedL;
+      }
+      return l;
+    });
+    saveLabourData("bhatta_labourers", updatedLabourers);
   };
 
   const defaultPayeRate = labour.ratePerPaya || 0;
@@ -174,11 +212,11 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
     }
 
     const tableData = (labour.entries || [])
-      .filter((e:any) => e.payeCount > 0 || e.kharcha > 0 || e.peshgi !== 0 || e.remark)
+      .filter((e:any) => e.payeCount > 0 || e.kharcha > 0 || e.peshgi !== 0 || e.remark || e.isLeave)
       .map((e:any) => [
         e.date,
-        e.payeCount || 0,
-        (e.payeCount || 0) * (e.customRatePerPaya !== undefined ? e.customRatePerPaya : (labour.ratePerPaya || 0)),
+        e.isLeave ? "LEAVE" : (e.payeCount || 0), // PDF me Leave Print hoga
+        e.isLeave ? "-" : ((e.payeCount || 0) * (e.customRatePerPaya !== undefined ? e.customRatePerPaya : (labour.ratePerPaya || 0))),
         e.kharcha || 0,
         e.peshgi || 0,
         e.remark || "-"
@@ -186,7 +224,7 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
 
     autoTable(doc, {
       startY: 65,
-      head: [['Date', 'Paye', 'Earned', 'Kharcha', 'Peshgi', 'Remark']],
+      head: [['Date', 'Paye/Status', 'Earned', 'Kharcha', 'Peshgi', 'Remark']],
       body: tableData,
       theme: 'grid',
       headStyles: { fillColor: [30, 64, 175] }
@@ -282,7 +320,6 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
                 </span>
               </h2>
               
-              {/* 🟢 NAYA: 3 BOXES GRID FOR TOTALS */}
               <div className="grid grid-cols-3 gap-2 md:gap-4 mt-6 pt-5 border-t border-slate-700/50">
                 <div className="bg-slate-900/60 p-3 md:p-4 rounded-xl border border-cyan-500/20 text-center flex flex-col justify-center">
                   <span className="text-[10px] md:text-xs text-cyan-500/80 uppercase tracking-widest font-bold mb-1">Kamai</span>
@@ -324,7 +361,7 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
             <div className="text-center">
               <h2 className="text-lg font-bold tracking-wide">{monthNames[currentMonth]} {currentYear}</h2>
             </div>
-            <button onClick={() => { if(currentMonth===11){setCurrentMonth(0); setCurrentYear(p=>p+1);} else setCurrentMonth(p=>p-1); }} className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm font-medium transition-colors">Next</button>
+            <button onClick={() => { if(currentMonth===11){setCurrentMonth(0); setCurrentYear(p=>p+1);} else setCurrentMonth(p=>p+1); }} className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm font-medium transition-colors">Next</button>
           </div>
 
           <div className="bg-gradient-to-br from-cyan-900/40 to-slate-900 border border-cyan-500/30 p-4 md:p-5 rounded-2xl shadow-lg">
@@ -371,11 +408,14 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
                 const payeCount = entry?.payeCount || 0;
                 const kharcha = entry?.kharcha || 0;
                 const remark = entry?.remark || "";
+                
+                // NAYA: isLeave Flag check
+                const isLeave = entry?.isLeave || false;
 
                 const activePayeRate = entry?.customRatePerPaya !== undefined ? entry.customRatePerPaya : defaultPayeRate;
                 const dailyEarning = payeCount * activePayeRate;
 
-                const hasEntry = payeCount > 0 || kharcha > 0 || remark !== "";
+                const hasEntry = payeCount > 0 || kharcha > 0 || remark !== "" || isLeave;
                 const isEditingThisRow = editingRowDate === formattedDate && isAdmin;
                 const isEditingRemarkThisRow = editingRemark?.date === formattedDate; 
 
@@ -392,9 +432,16 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
                       <span className="whitespace-nowrap">{String(day).padStart(2, '0')} {monthNames[currentMonth]}</span>
                     </td>
 
+                    {/* PAYE DETAILS COLUMN */}
                     <td className={isCard ? `${!hasEntry && !isEditingThisRow && !isEditingRemarkThisRow ? 'hidden' : 'flex'} justify-between items-center md:table-cell p-3 md:px-6 md:py-4 border-b md:border-b-0 border-slate-700/50` : "p-4 md:px-6 font-medium text-emerald-300"}>
-                      {isCard && <span className="md:hidden text-[10px] text-slate-500 uppercase font-bold tracking-widest">Paye</span>}
-                      {isEditingThisRow ? (
+                      {isCard && <span className="md:hidden text-[10px] text-slate-500 uppercase font-bold tracking-widest">Paye / Status</span>}
+                      
+                      {/* NAYA: Chhutti Badge */}
+                      {isLeave ? (
+                        <span className="flex items-center gap-1.5 text-rose-400 font-bold bg-rose-500/10 border border-rose-500/20 px-2.5 py-1 rounded-md w-fit text-xs tracking-wider">
+                          <UserMinus size={14} /> LEAVE
+                        </span>
+                      ) : isEditingThisRow ? (
                         <div className="flex items-center gap-2 w-fit">
                           <input type="number" autoFocus value={editPaye} onChange={(e)=>setEditPaye(e.target.value)} className={`${inputBaseStyle} w-20 text-emerald-300 font-bold placeholder:text-slate-600`} placeholder="Qty"/>
                           <span className="text-slate-500 text-xs font-medium bg-slate-900/50 px-2 py-1.5 rounded-md border border-slate-700">@ ₹{activePayeRate}</span>
@@ -411,15 +458,19 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
                       )}
                     </td>
 
+                    {/* DAILY EARNING COLUMN */}
                     <td className={isCard ? `${!hasEntry && !isEditingThisRow && !isEditingRemarkThisRow ? 'hidden' : 'flex'} justify-between items-center md:table-cell p-3 md:px-6 md:py-4 border-b md:border-b-0 border-slate-700/50` : "p-4 md:px-6 font-medium text-cyan-300"}>
                       {isCard && <span className="md:hidden text-[10px] text-slate-500 uppercase font-bold tracking-widest">Earned</span>}
-                      {isEditingThisRow ? (
+                      {isLeave ? (
+                        <span className="text-slate-600">-</span>
+                      ) : isEditingThisRow ? (
                         <span className="text-cyan-400 font-bold px-2 bg-cyan-900/20 py-1 rounded-md border border-cyan-500/20">₹{liveEarning.toFixed(0)}</span>
                       ) : (
                         <span className={dailyEarning > 0 ? "text-cyan-400 font-bold" : "text-slate-600"}>{dailyEarning > 0 ? `₹${dailyEarning.toFixed(0)}` : '-'}</span>
                       )}
                     </td>
 
+                    {/* EXPENSES COLUMN */}
                     <td className={isCard ? `${!hasEntry && !isEditingThisRow && !isEditingRemarkThisRow ? 'hidden' : 'flex'} justify-between items-center md:table-cell p-3 md:px-6 md:py-4 border-b md:border-b-0 border-slate-700/50` : "p-4 md:px-6 font-medium text-orange-300"}>
                       {isCard && <span className="md:hidden text-[10px] text-slate-500 uppercase font-bold tracking-widest">Expenses</span>}
                       {isEditingThisRow ? (
@@ -432,10 +483,12 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
                       )}
                     </td>
                     
+                    {/* ACTIONS COLUMN (ADMIN ONLY) */}
                     {isAdmin && (
                       <td className={`p-3 md:px-6 md:py-4 align-middle text-center ${isCard ? 'flex justify-between items-center md:table-cell border-t border-slate-700/30 mt-2' : ''}`}>
                         {isCard && <span className="md:hidden text-[10px] text-blue-400/70 uppercase font-bold tracking-widest">Actions</span>}
-                        <div className="flex items-center justify-end md:justify-center gap-2 relative">
+                        <div className="flex items-center justify-end md:justify-center gap-1.5 relative">
+                          
                           {isEditingThisRow ? (
                             <div className="flex items-center gap-1.5 bg-slate-800 p-1.5 rounded-xl shadow-lg border border-slate-600">
                               <button onClick={()=>setEditingRowDate(null)} className="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-700 rounded-lg transition-colors"><X size={16}/></button>
@@ -444,9 +497,9 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
                           ) : (
                             <button 
                               onClick={() => { setEditingRowDate(formattedDate); setEditPaye(payeCount ? payeCount.toString() : ""); setEditKharcha(kharcha ? kharcha.toString() : ""); }}
-                              className={`flex items-center justify-center w-8 h-8 rounded-lg transition-all border ${hasEntry ? 'border-slate-600 bg-slate-700/50 hover:bg-slate-600 text-slate-300' : 'border-dashed border-slate-600/50 text-slate-500 hover:text-slate-300 hover:bg-slate-700/30'}`}
+                              className={`flex items-center justify-center w-8 h-8 rounded-lg transition-all border ${hasEntry && !isLeave ? 'border-slate-600 bg-slate-700/50 hover:bg-slate-600 text-slate-300' : 'border-dashed border-slate-600/50 text-slate-500 hover:text-slate-300 hover:bg-slate-700/30'}`}
                             >
-                              {hasEntry ? <Edit3 size={15}/> : <PlusCircle size={15} />}
+                              {hasEntry && !isLeave ? <Edit3 size={15}/> : <PlusCircle size={15} />}
                             </button>
                           )}
 
@@ -456,14 +509,26 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
                               <button type="submit" className="p-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-md transition-colors"><Check size={14} /></button>
                             </form>
                           ) : (!isEditingThisRow && (
-                            <button onClick={() => setEditingRemark({ date: formattedDate, text: remark })} className={`flex items-center justify-center w-8 h-8 rounded-lg transition-all border ${remark ? 'border-blue-500/50 bg-blue-500/10 text-blue-400' : 'border-transparent text-slate-500 hover:bg-slate-700/50 hover:text-slate-300'}`}>
-                              {remark ? <MessageSquareText size={16} /> : <MessageSquare size={16} />}
-                            </button>
+                            <>
+                              <button onClick={() => setEditingRemark({ date: formattedDate, text: remark })} className={`flex items-center justify-center w-8 h-8 rounded-lg transition-all border ${remark ? 'border-blue-500/50 bg-blue-500/10 text-blue-400' : 'border-transparent text-slate-500 hover:bg-slate-700/50 hover:text-slate-300'}`}>
+                                {remark ? <MessageSquareText size={16} /> : <MessageSquare size={16} />}
+                              </button>
+                              
+                              {/* NAYA: Chhutti Toggle Button for Admin only */}
+                              <button 
+                                onClick={() => handleToggleLeave(formattedDate)} 
+                                className={`flex items-center justify-center w-8 h-8 rounded-lg transition-all border ${isLeave ? 'border-rose-500/50 bg-rose-500/10 text-rose-400' : 'border-transparent text-slate-500 hover:bg-slate-700/50 hover:text-rose-400'}`}
+                                title={isLeave ? "Remove Leave" : "Mark Leave"}
+                              >
+                                <UserMinus size={16} />
+                              </button>
+                            </>
                           ))}
                         </div>
                       </td>
                     )}
 
+                    {/* REMARK COLUMN (NON-ADMIN/USER ONLY) */}
                     {!isAdmin && (
                       <td className={isCard ? `flex justify-between items-center md:table-cell p-3 md:px-6 md:py-4 border-b md:border-b-0 border-slate-700/50` : "p-4 md:px-6 font-medium text-blue-300"}>
                         {isCard && <span className="md:hidden text-[10px] text-slate-500 uppercase font-bold tracking-widest">Remark</span>}

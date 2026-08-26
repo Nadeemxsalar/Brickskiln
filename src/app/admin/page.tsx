@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { saveLabourData, getLabourData } from "../../lib/storage";
 import { Labour, DailyEntry, Bhatta } from "../../types";
-import { Menu, X, FileText, LayoutDashboard, IndianRupee, Users, Building2, Layers, Wallet, Settings, Check, LogOut, CheckSquare, Search, AlertCircle, CheckCircle, TrendingDown, TrendingUp, ChevronRight, ChevronDown, History, BarChart3, Upload, FileSpreadsheet, Download, FileDown } from "lucide-react";
+import { Menu, X, FileText, LayoutDashboard, IndianRupee, Users, Building2, Layers, Wallet, Settings, Check, LogOut, CheckSquare, Search, AlertCircle, CheckCircle, TrendingDown, TrendingUp, ChevronRight, ChevronDown, History, BarChart3, Upload, FileSpreadsheet, Download, FileDown, Maximize2, Minimize2, UserMinus } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid } from 'recharts';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -18,11 +18,13 @@ export default function AdminDashboard() {
   const [isAddingBhatta, setIsAddingBhatta] = useState(false);
   
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  // NAYA: "download" tab add kiya
   const [activeTab, setActiveTab] = useState<"dashboard" | "eent" | "kharcha" | "peshgi" | "manage" | "download">("dashboard");
 
   const [toast, setToast] = useState<{msg: string, type: "success" | "error"} | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
+
+  // NAYA: Fullscreen Selection State
+  const [fullScreenList, setFullScreenList] = useState<"work" | "kharcha" | null>(null);
 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -35,7 +37,7 @@ export default function AdminDashboard() {
   const [searchBulk, setSearchBulk] = useState("");
   const [searchBulkKharcha, setSearchBulkKharcha] = useState("");
   const [searchPeshgi, setSearchPeshgi] = useState("");
-  const [searchDownload, setSearchDownload] = useState(""); // NAYA: Download tab ke liye search
+  const [searchDownload, setSearchDownload] = useState(""); 
 
   const [selectedLabourIds, setSelectedLabourIds] = useState<string[]>([]);
   const [payeAmount, setPayeAmount] = useState("");
@@ -98,7 +100,8 @@ export default function AdminDashboard() {
         ...e,
         kharcha: e.kharcha || 0,
         peshgi: e.peshgi !== undefined ? e.peshgi : (e.advance || 0),
-        payeCount: e.payeCount || 0
+        payeCount: e.payeCount || 0,
+        isLeave: e.isLeave || false // Chhuti flag
       }));
       return newLab;
     });
@@ -143,62 +146,129 @@ export default function AdminDashboard() {
     return { name: lab.name, Earned: earned, Expenses: lab.totalKharcha || 0, Advance: lab.totalPeshgi || 0 };
   }).sort((a, b) => b.Earned - a.Earned).slice(0, 10); 
 
-  // ==================== PDF GENERATION LOGIC ====================
+  // ==================== SMART CSV IMPORT LOGIC ====================
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !activeBhattaId) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const csv = event.target?.result as string;
+      const lines = csv.split('\n');
+      
+      let currentMaxId = 1000;
+      labourers.forEach(l => {
+        const num = parseInt(l.loginId, 10);
+        if (!isNaN(num) && num > currentMaxId) currentMaxId = num;
+      });
+
+      // Temporary map to group multiple dates for the same person
+      const tempLabourersMap = new Map();
+
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        
+        const cols = line.split(',');
+        const colName = cols[0]?.trim();
+        if (!colName) continue;
+
+        const colPhone = cols[1]?.trim() || "";
+        const colLocation = cols[2]?.trim() || "-";
+        const colRate = Number(cols[3]?.trim()) || 0;
+        
+        // NAYA: Smart Fields with blank fallbacks
+        const colDate = cols[4]?.trim() || "";
+        const colPaye = Number(cols[5]?.trim()) || 0;
+        const colKharcha = Number(cols[6]?.trim()) || 0;
+        const colAdvance = Number(cols[7]?.trim()) || 0;
+        const colRemark = cols[8]?.trim() || "";
+
+        const mapKey = `${colName}_${colPhone}`; // Identify unique labour
+
+        if (!tempLabourersMap.has(mapKey)) {
+          currentMaxId++;
+          tempLabourersMap.set(mapKey, {
+            id: Date.now().toString() + Math.random().toString(),
+            bhattaId: activeBhattaId,
+            name: colName,
+            loginId: currentMaxId.toString(),
+            phone: colPhone,
+            paya: colLocation,
+            ratePerPaya: colRate,
+            totalPaye: 0, totalKharcha: 0, totalPeshgi: 0, entries: []
+          });
+        }
+
+        const currentLab = tempLabourersMap.get(mapKey);
+
+        // Date ho tabhi entry banegi
+        if (colDate) {
+          // Date format convert to YYYY-MM-DD if needed (assuming user inputs YYYY-MM-DD)
+          currentLab.entries.push({
+            id: Date.now().toString() + Math.random().toString(),
+            date: colDate,
+            payeCount: colPaye,
+            customRatePerPaya: colRate,
+            kharcha: colKharcha,
+            peshgi: colAdvance,
+            remark: colRemark,
+            isLeave: false
+          });
+          currentLab.totalPaye += colPaye;
+          currentLab.totalKharcha += colKharcha;
+          currentLab.totalPeshgi += colAdvance;
+        }
+      }
+
+      const newLabourers = Array.from(tempLabourersMap.values());
+
+      if (newLabourers.length > 0) {
+        const updatedList = [...labourers, ...newLabourers];
+        setLabourers(updatedList);
+        saveLabourData("bhatta_labourers", updatedList);
+        showToast(`${newLabourers.length} Labourers Smart Import Success!`, "success");
+        setShowImportModal(false); 
+      } else {
+        showToast("File khali hai ya galat format hai!", "error");
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = ''; 
+  };
+  // ============================================================
+
   const downloadIndividualPDF = (lab: any) => {
     const doc = new jsPDF();
-    
     let earned = 0;
-    (lab.entries || []).forEach((e: any) => { 
-      earned += (e.payeCount || 0) * (e.customRatePerPaya !== undefined ? e.customRatePerPaya : (lab.ratePerPaya || 0)); 
-    });
+    (lab.entries || []).forEach((e: any) => { earned += (e.payeCount || 0) * (e.customRatePerPaya !== undefined ? e.customRatePerPaya : (lab.ratePerPaya || 0)); });
     const kharcha = lab.totalKharcha || 0;
     const peshgi = lab.totalPeshgi !== undefined ? lab.totalPeshgi : (lab.totalAdvance || 0);
     const netBalance = earned - kharcha - peshgi;
 
-    doc.setFontSize(22);
-    doc.setTextColor(30, 64, 175); 
-    doc.text(`${activeBhattaName} - Hisaab Parchi`, 14, 20);
+    doc.setFontSize(22); doc.setTextColor(30, 64, 175); doc.text(`${activeBhattaName} - Hisaab Parchi`, 14, 20);
+    doc.setFontSize(12); doc.setTextColor(0, 0, 0);
+    doc.text(`Labour Name: ${lab.name}`, 14, 32); doc.text(`Login ID: ${lab.loginId}`, 14, 40);
+    doc.text(`Mobile: ${lab.phone || "-"}`, 14, 48); doc.text(`Location: ${lab.paya || "-"}`, 14, 56);
     
-    doc.setFontSize(12);
-    doc.setTextColor(0, 0, 0);
-    doc.text(`Labour Name: ${lab.name}`, 14, 32);
-    doc.text(`Login ID: ${lab.loginId}`, 14, 40);
-    doc.text(`Mobile: ${lab.phone || "-"}`, 14, 48);
-    doc.text(`Location: ${lab.paya || "-"}`, 14, 56);
-    
-    doc.setFontSize(12);
-    doc.text(`Total Kamai: Rs ${earned.toLocaleString()}`, 120, 32);
-    doc.text(`Total Kharcha: Rs ${kharcha.toLocaleString()}`, 120, 40);
-    doc.text(`Total Peshgi: Rs ${peshgi.toLocaleString()}`, 120, 48);
+    doc.text(`Total Kamai: Rs ${earned.toLocaleString()}`, 120, 32); doc.text(`Total Kharcha: Rs ${kharcha.toLocaleString()}`, 120, 40); doc.text(`Total Peshgi: Rs ${peshgi.toLocaleString()}`, 120, 48);
     
     doc.setFont("helvetica", "bold");
-    if(netBalance < 0) {
-      doc.setTextColor(220, 38, 38); 
-      doc.text(`Final Balance: Rs ${Math.abs(netBalance).toLocaleString()} (Aap par hai)`, 120, 56);
-    } else {
-      doc.setTextColor(16, 185, 129); 
-      doc.text(`Final Balance: Rs ${netBalance.toLocaleString()} (Aapko lene hain)`, 120, 56);
-    }
+    if(netBalance < 0) { doc.setTextColor(220, 38, 38); doc.text(`Final Balance: Rs ${Math.abs(netBalance).toLocaleString()} (Aap par hai)`, 120, 56); } 
+    else { doc.setTextColor(16, 185, 129); doc.text(`Final Balance: Rs ${netBalance.toLocaleString()} (Aapko lene hain)`, 120, 56); }
 
     const tableData = (lab.entries || [])
-      .filter((e:any) => e.payeCount > 0 || e.kharcha > 0 || e.peshgi !== 0 || e.remark)
+      .filter((e:any) => e.payeCount > 0 || e.kharcha > 0 || e.peshgi !== 0 || e.remark || e.isLeave)
       .map((e:any) => [
         e.date,
-        e.payeCount || 0,
-        (e.payeCount || 0) * (e.customRatePerPaya !== undefined ? e.customRatePerPaya : (lab.ratePerPaya || 0)),
+        e.isLeave ? "LEAVE" : (e.payeCount || 0),
+        e.isLeave ? "-" : ((e.payeCount || 0) * (e.customRatePerPaya !== undefined ? e.customRatePerPaya : (lab.ratePerPaya || 0))),
         e.kharcha || 0,
         e.peshgi || 0,
         e.remark || "-"
       ]);
 
-    autoTable(doc, {
-      startY: 65,
-      head: [['Date', 'Paye', 'Earned', 'Kharcha', 'Peshgi', 'Remark']],
-      body: tableData,
-      theme: 'grid',
-      headStyles: { fillColor: [30, 64, 175] }
-    });
-
+    autoTable(doc, { startY: 65, head: [['Date', 'Paye', 'Earned', 'Kharcha', 'Peshgi', 'Remark']], body: tableData, theme: 'grid', headStyles: { fillColor: [30, 64, 175] } });
     doc.save(`${lab.name}_Parchi.pdf`);
     showToast(`${lab.name} ki Parchi Download ho gayi!`, "success");
   };
@@ -206,43 +276,24 @@ export default function AdminDashboard() {
   const downloadAllSummaryPDF = () => {
     if(currentLabourers.length === 0) return showToast("Koi data nahi hai!", "error");
     const doc = new jsPDF();
-    
-    doc.setFontSize(22);
-    doc.setTextColor(30, 64, 175);
-    doc.text(`${activeBhattaName} - All Labour Summary`, 14, 20);
-
-    doc.setFontSize(11);
-    doc.setTextColor(0, 0, 0);
-    doc.text(`Total Kamai: Rs ${overallStats.totalEarned.toLocaleString()}`, 14, 30);
-    doc.text(`Total Kharcha: Rs ${overallStats.totalExpenses.toLocaleString()}`, 80, 30);
-    doc.text(`Total Advance: Rs ${overallStats.totalAdvance.toLocaleString()}`, 150, 30);
+    doc.setFontSize(22); doc.setTextColor(30, 64, 175); doc.text(`${activeBhattaName} - All Labour Summary`, 14, 20);
+    doc.setFontSize(11); doc.setTextColor(0, 0, 0);
+    doc.text(`Total Kamai: Rs ${overallStats.totalEarned.toLocaleString()}`, 14, 30); doc.text(`Total Kharcha: Rs ${overallStats.totalExpenses.toLocaleString()}`, 80, 30); doc.text(`Total Advance: Rs ${overallStats.totalAdvance.toLocaleString()}`, 150, 30);
 
     const tableData = currentLabourers.map(lab => {
       let earned = 0;
-      (lab.entries || []).forEach((e: any) => { 
-        earned += (e.payeCount || 0) * (e.customRatePerPaya !== undefined ? e.customRatePerPaya : (lab.ratePerPaya || 0)); 
-      });
+      (lab.entries || []).forEach((e: any) => { earned += (e.payeCount || 0) * (e.customRatePerPaya !== undefined ? e.customRatePerPaya : (lab.ratePerPaya || 0)); });
       const kharcha = lab.totalKharcha || 0;
       const peshgi = lab.totalPeshgi !== undefined ? lab.totalPeshgi : (lab.totalAdvance || 0);
       const net = earned - kharcha - peshgi;
-      
       const netText = net < 0 ? `-${Math.abs(net)} (Len)` : `${net} (Den)`;
-      
       return [lab.name, lab.loginId, earned, kharcha, peshgi, netText];
     });
 
-    autoTable(doc, {
-      startY: 38,
-      head: [['Name', 'ID', 'Earned', 'Kharcha', 'Peshgi', 'Net Balance']],
-      body: tableData,
-      theme: 'grid',
-      headStyles: { fillColor: [15, 23, 42] }
-    });
-
+    autoTable(doc, { startY: 38, head: [['Name', 'ID', 'Earned', 'Kharcha', 'Peshgi', 'Net Balance']], body: tableData, theme: 'grid', headStyles: { fillColor: [15, 23, 42] } });
     doc.save(`${activeBhattaName}_Full_Summary.pdf`);
     showToast("Summary PDF Download ho gayi!", "success");
   };
-  // ============================================================
 
   const handleAddBhatta = (e: React.FormEvent) => {
     e.preventDefault();
@@ -280,61 +331,6 @@ export default function AdminDashboard() {
     showToast("Naya labour add ho gaya!", "success");
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !activeBhattaId) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const csv = event.target?.result as string;
-      const lines = csv.split('\n');
-      
-      let currentMaxId = 1000;
-      labourers.forEach(l => {
-        const num = parseInt(l.loginId, 10);
-        if (!isNaN(num) && num > currentMaxId) currentMaxId = num;
-      });
-
-      const newLabourers: any[] = [];
-      for (let i = 1; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (!line) continue;
-        
-        const cols = line.split(',');
-        const colName = cols[0]?.trim();
-        const colPhone = cols[1]?.trim() || "";
-        const colLocation = cols[2]?.trim() || "-";
-        const colRate = Number(cols[3]?.trim()) || 0;
-
-        if (!colName) continue;
-        
-        currentMaxId++;
-        newLabourers.push({
-          id: Date.now().toString() + Math.random().toString(),
-          bhattaId: activeBhattaId,
-          name: colName,
-          loginId: currentMaxId.toString(),
-          phone: colPhone,
-          paya: colLocation,
-          ratePerPaya: colRate,
-          totalBricks: 0, totalPaye: 0, totalKharcha: 0, totalPeshgi: 0, entries: []
-        });
-      }
-
-      if (newLabourers.length > 0) {
-        const updatedList = [...labourers, ...newLabourers];
-        setLabourers(updatedList);
-        saveLabourData("bhatta_labourers", updatedList);
-        showToast(`${newLabourers.length} Labourers imported successfully!`, "success");
-        setShowImportModal(false); 
-      } else {
-        showToast("File khali hai ya galat format hai!", "error");
-      }
-    };
-    reader.readAsText(file);
-    e.target.value = ''; 
-  };
-
   const handleAddWork = (e: React.FormEvent) => {
     e.preventDefault();
     if (selectedLabourIds.length === 0) return showToast("Kripya kam se kam ek labour select karein!", "error");
@@ -353,13 +349,13 @@ export default function AdminDashboard() {
       const updatedEntries = (Array.isArray(selectedLabour.entries) ? selectedLabour.entries : []).map((e: any) => {
         if (e.date === entryDate) {
           entryExists = true;
-          return { ...e, payeCount: (e.payeCount || 0) + paye, customRatePerPaya: activePayeRate };
+          return { ...e, payeCount: (e.payeCount || 0) + paye, customRatePerPaya: activePayeRate, isLeave: false };
         }
         return e;
       });
 
       if (!entryExists) {
-        updatedEntries.push({ id: Date.now().toString() + Math.random().toString(), date: entryDate, bricks: 0, payeCount: paye, customRatePerPaya: activePayeRate, kharcha: 0, peshgi: 0 });
+        updatedEntries.push({ id: Date.now().toString() + Math.random().toString(), date: entryDate, bricks: 0, payeCount: paye, customRatePerPaya: activePayeRate, kharcha: 0, peshgi: 0, isLeave: false });
       }
       updatedLabourers[labourIndex] = { ...selectedLabour, entries: updatedEntries, totalPaye: (selectedLabour.totalPaye || 0) + paye };
     });
@@ -368,6 +364,39 @@ export default function AdminDashboard() {
     setPayeAmount(""); setSelectedLabourIds([]); 
     showToast("Work entry successfully chadh gayi!", "success");
   };
+
+  // NAYA: Bulk Leave Feature
+  const handleAddBulkLeave = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (selectedLabourIds.length === 0) return showToast("Kripya kam se kam ek labour select karein!", "error");
+
+    let updatedLabourers = [...labourers];
+
+    selectedLabourIds.forEach(id => {
+      const labourIndex = updatedLabourers.findIndex(l => l.id === id);
+      if (labourIndex === -1) return;
+      const selectedLabour = updatedLabourers[labourIndex];
+
+      let entryExists = false;
+      const updatedEntries = (Array.isArray(selectedLabour.entries) ? selectedLabour.entries : []).map((e: any) => {
+        if (e.date === entryDate) {
+          entryExists = true;
+          return { ...e, isLeave: true };
+        }
+        return e;
+      });
+
+      if (!entryExists) {
+        updatedEntries.push({ id: Date.now().toString() + Math.random().toString(), date: entryDate, bricks: 0, payeCount: 0, customRatePerPaya: selectedLabour.ratePerPaya || 0, kharcha: 0, peshgi: 0, isLeave: true });
+      }
+      updatedLabourers[labourIndex] = { ...selectedLabour, entries: updatedEntries };
+    });
+
+    setLabourers(updatedLabourers); saveLabourData("bhatta_labourers", updatedLabourers);
+    setSelectedLabourIds([]); 
+    showToast("Leave (Absent) successfully mark ho gaya!", "success");
+  };
+
 
   const handleAddKharcha = (e: React.FormEvent) => {
     e.preventDefault();
@@ -476,7 +505,6 @@ export default function AdminDashboard() {
   const filteredBulk = currentLabourers.filter(l => l.name.toLowerCase().includes(searchBulk.toLowerCase()));
   const filteredBulkKharcha = currentLabourers.filter(l => l.name.toLowerCase().includes(searchBulkKharcha.toLowerCase()));
   const filteredPeshgi = currentLabourers.filter(l => l.name.toLowerCase().includes(searchPeshgi.toLowerCase()));
-  // NAYA: Search Download Tab
   const filteredDownload = currentLabourers.filter(l => l.name.toLowerCase().includes(searchDownload.toLowerCase()) || (l.loginId && l.loginId.includes(searchDownload)));
 
   return (
@@ -493,20 +521,38 @@ export default function AdminDashboard() {
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg p-6 shadow-2xl relative">
             <button onClick={() => setShowImportModal(false)} className="absolute top-4 right-4 text-slate-400 hover:text-white transition-colors bg-slate-800 p-1.5 rounded-lg"><X size={20} /></button>
-            <h2 className="text-xl font-bold text-emerald-400 mb-2 flex items-center gap-2"><FileSpreadsheet size={24} /> Import Labour Data</h2>
-            <p className="text-sm text-slate-400 mb-5">Excel ya CSV file import karne se pehle apni file ka format zaroor check kar lein. <span className="text-white font-semibold">Pehli line (Header) chhod di jayegi.</span></p>
+            <h2 className="text-xl font-bold text-emerald-400 mb-2 flex items-center gap-2"><FileSpreadsheet size={24} /> Smart Import Labour Data</h2>
+            <p className="text-sm text-slate-400 mb-5">Nayi CSV file mein aap poora hisaab ek sath daal sakte hain. <span className="text-white font-semibold">Khali field automatically zero ho jayegi.</span></p>
             <div className="bg-slate-950 rounded-xl p-4 border border-slate-700 mb-6 overflow-x-auto shadow-inner">
-              <p className="text-xs font-bold tracking-widest text-slate-500 uppercase mb-3">Required Columns (Left to Right)</p>
-              <table className="w-full text-left text-xs whitespace-nowrap">
-                <thead><tr className="text-slate-300 border-b border-slate-800"><th className="pb-2 pr-4 font-semibold text-blue-400">1. Name <span className="text-rose-500">*</span></th><th className="pb-2 pr-4 font-semibold">2. Mobile</th><th className="pb-2 pr-4 font-semibold">3. Location</th><th className="pb-2 font-semibold text-emerald-400">4. Rate <span className="text-rose-500">*</span></th></tr></thead>
-                <tbody className="text-slate-400 font-mono"><tr><td className="pt-2 pr-4 text-white">Ramu</td><td className="pt-2 pr-4">9876543210</td><td className="pt-2 pr-4">Line 1</td><td className="pt-2 text-white">35</td></tr></tbody>
+              <p className="text-xs font-bold tracking-widest text-slate-500 uppercase mb-3">Format Columns (Must match exactly)</p>
+              <table className="w-full text-left text-[10px] md:text-xs whitespace-nowrap">
+                <thead><tr className="text-slate-300 border-b border-slate-800">
+                  <th className="pb-2 pr-3 font-semibold text-blue-400">Name*</th>
+                  <th className="pb-2 pr-3 font-semibold">Mobile</th>
+                  <th className="pb-2 pr-3 font-semibold">Location</th>
+                  <th className="pb-2 pr-3 font-semibold text-emerald-400">Rate</th>
+                  <th className="pb-2 pr-3 font-semibold text-rose-400">Date (YYYY-MM-DD)</th>
+                  <th className="pb-2 pr-3 font-semibold">Paye</th>
+                  <th className="pb-2 pr-3 font-semibold">Kharcha</th>
+                  <th className="pb-2 pr-3 font-semibold">Peshgi</th>
+                  <th className="pb-2 font-semibold">Remark</th>
+                </tr></thead>
+                <tbody className="text-slate-400 font-mono">
+                  <tr>
+                    <td className="pt-2 pr-3 text-white">Ramu</td><td className="pt-2 pr-3">987...</td><td className="pt-2 pr-3">L1</td><td className="pt-2 pr-3 text-white">35</td>
+                    <td className="pt-2 pr-3">2026-08-25</td><td className="pt-2 pr-3 text-emerald-400">500</td><td className="pt-2 pr-3">100</td><td className="pt-2 pr-3">0</td><td className="pt-2">Late</td>
+                  </tr>
+                  <tr>
+                    <td className="pt-1 pr-3 text-white">Ramu</td><td className="pt-1 pr-3">987...</td><td className="pt-1 pr-3">L1</td><td className="pt-1 pr-3 text-white">35</td>
+                    <td className="pt-1 pr-3">2026-08-26</td><td className="pt-1 pr-3 text-emerald-400">0</td><td className="pt-1 pr-3">0</td><td className="pt-1 pr-3 text-rose-400">2000</td><td className="pt-1">Advance</td>
+                  </tr>
+                </tbody>
               </table>
             </div>
             <div className="relative mt-2">
               <input type="file" accept=".csv" id="csv-modal-upload" className="hidden" onChange={handleFileUpload} />
               <label htmlFor="csv-modal-upload" className="w-full cursor-pointer bg-emerald-600 hover:bg-emerald-500 text-white py-3.5 rounded-xl font-bold flex justify-center items-center gap-2 transition-all shadow-[0_0_15px_rgba(16,185,129,0.3)] active:scale-95"><Upload size={18} /> Select & Upload CSV File</label>
             </div>
-            <p className="text-center text-xs text-slate-500 mt-4">Labour ID automatically generate ho jayegi.</p>
           </div>
         </div>
       )}
@@ -542,8 +588,6 @@ export default function AdminDashboard() {
           <button onClick={() => changeTab("eent")} className={`w-full flex items-center gap-3 p-3 rounded-xl transition ${activeTab === "eent" ? "bg-emerald-600 text-white shadow-lg shadow-emerald-500/30" : "hover:bg-slate-800 text-gray-300"}`}><Layers size={20} /> Work Entry</button>
           <button onClick={() => changeTab("kharcha")} className={`w-full flex items-center gap-3 p-3 rounded-xl transition ${activeTab === "kharcha" ? "bg-orange-600 text-white shadow-lg shadow-orange-500/30" : "hover:bg-slate-800 text-gray-300"}`}><Wallet size={20} /> Expenses</button>
           <button onClick={() => changeTab("peshgi")} className={`w-full flex items-center gap-3 p-3 rounded-xl transition ${activeTab === "peshgi" ? "bg-red-600 text-white shadow-lg shadow-red-500/30" : "hover:bg-slate-800 text-gray-300"}`}><IndianRupee size={20} /> Advance (Peshgi)</button>
-          
-          {/* NAYA: Download Tab Button */}
           <button onClick={() => changeTab("download")} className={`w-full flex items-center gap-3 p-3 rounded-xl transition mt-4 border border-cyan-500/20 ${activeTab === "download" ? "bg-cyan-600 text-white shadow-lg shadow-cyan-500/30" : "hover:bg-slate-800 text-cyan-400"}`}><FileDown size={20} /> Download Receipt</button>
         </div>
 
@@ -656,7 +700,6 @@ export default function AdminDashboard() {
                         <div className="text-left bg-slate-900/50 px-4 py-2 rounded-lg border border-slate-700/50"><p className="text-rose-400 text-[10px] uppercase tracking-wider">Advance</p><p className="text-lg font-bold">₹{safeTotalPeshgi.toLocaleString()}</p></div>
                       </div>
                       <div className="w-full lg:w-auto flex justify-end gap-2">
-                        {/* Download button hata diya gaya dashboard se as per requirement */}
                         <Link href={`/labour/${lab.id}`} className="flex items-center justify-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition font-medium whitespace-nowrap shadow-md">
                           <FileText size={18} /> View Register
                         </Link>
@@ -669,10 +712,9 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* ===================== NAYA: DOWNLOAD RECEIPT TAB ===================== */}
+        {/* ===================== DOWNLOAD RECEIPT TAB ===================== */}
         {activeTab === "download" && (
           <div className="space-y-6 animate-in fade-in duration-300">
-            {/* Box 1: All Labour Summary Download */}
             <div className="bg-gradient-to-br from-cyan-900/30 to-slate-800/80 border border-cyan-500/30 rounded-2xl p-8 shadow-xl text-center">
               <h2 className="text-2xl font-bold mb-3 text-cyan-400 flex justify-center items-center gap-2">
                 <FileSpreadsheet size={28} /> Download Master Summary
@@ -680,15 +722,11 @@ export default function AdminDashboard() {
               <p className="text-slate-400 text-sm mb-6 max-w-lg mx-auto">
                 Is button se aapke poore bhatte ({activeBhattaName}) ke sabhi labourers ka Total Hisaab ek hi PDF list mein aa jayega. Master checking ke liye best hai.
               </p>
-              <button 
-                onClick={downloadAllSummaryPDF} 
-                className="bg-cyan-600 hover:bg-cyan-500 text-white px-8 py-3.5 rounded-xl text-sm font-bold flex items-center gap-2 mx-auto transition-all shadow-[0_0_15px_rgba(6,182,212,0.4)] active:scale-95"
-              >
+              <button onClick={downloadAllSummaryPDF} className="bg-cyan-600 hover:bg-cyan-500 text-white px-8 py-3.5 rounded-xl text-sm font-bold flex items-center gap-2 mx-auto transition-all shadow-[0_0_15px_rgba(6,182,212,0.4)] active:scale-95">
                 <Download size={20}/> Download Summary PDF
               </button>
             </div>
 
-            {/* Box 2: Individual Labour Parchi */}
             <div className="bg-slate-800/40 backdrop-blur-xl border border-slate-700/50 rounded-2xl p-6 shadow-xl">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 pb-4 border-b border-slate-700/50">
                 <h2 className="text-xl font-bold text-white flex items-center gap-2">
@@ -708,11 +746,7 @@ export default function AdminDashboard() {
                       <h3 className="font-bold text-slate-200 group-hover:text-cyan-300 transition-colors">{lab.name}</h3>
                       <p className="text-xs text-slate-500 mt-0.5">ID: {lab.loginId}</p>
                     </div>
-                    <button 
-                      onClick={() => downloadIndividualPDF(lab)} 
-                      className="p-2.5 bg-slate-800 hover:bg-emerald-600 text-emerald-400 hover:text-white rounded-lg transition-all border border-slate-700 hover:border-emerald-500 shadow-sm"
-                      title="Download Parchi"
-                    >
+                    <button onClick={() => downloadIndividualPDF(lab)} className="p-2.5 bg-slate-800 hover:bg-emerald-600 text-emerald-400 hover:text-white rounded-lg transition-all border border-slate-700 hover:border-emerald-500 shadow-sm" title="Download Parchi">
                       <FileDown size={18} />
                     </button>
                   </div>
@@ -770,43 +804,69 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* ===================== WORK ENTRY TAB ===================== */}
+        {/* ===================== WORK ENTRY TAB & FULLSCREEN SELECTION ===================== */}
         {activeTab === "eent" && (
           <div className="space-y-6 animate-in fade-in duration-300">
             <div className="bg-slate-800/40 border border-slate-700/50 rounded-2xl p-6 shadow-xl flex flex-col md:flex-row gap-6">
+              
               <div className="w-full md:w-1/3 flex flex-col gap-4">
-                <h2 className="text-xl font-bold mb-2 text-emerald-400 flex items-center gap-2"><CheckSquare size={22} /> Add Bulk Work</h2>
+                <h2 className="text-xl font-bold mb-2 text-emerald-400 flex items-center gap-2"><CheckSquare size={22} /> Bulk Attendance/Work</h2>
                 <div><label className="block text-xs font-medium text-slate-400 mb-1">Date</label><input type="date" value={entryDate} onChange={(e) => setEntryDate(e.target.value)} className="w-full bg-slate-900/80 border border-slate-600 rounded-lg px-3 py-2.5 outline-none focus:border-emerald-500 text-sm" required /></div>
-                <div><label className="block text-xs font-bold text-emerald-400 mb-1">Paye Count (For Selected)</label><input type="number" value={payeAmount} onChange={(e) => setPayeAmount(e.target.value)} className="w-full bg-slate-900/80 border border-emerald-500/50 rounded-lg px-3 py-2.5 outline-none focus:border-emerald-400 text-emerald-100 text-lg font-bold" placeholder="e.g. 5" /></div>
-                <div className="mt-2 text-xs text-slate-400 bg-slate-900/50 p-3 rounded-lg border border-slate-700">💡 Jin labourers ko select karenge, un sabhi ke account mein upar likhe hue Paye add ho jayenge.</div>
-                <button onClick={handleAddWork} className="w-full mt-auto py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold transition-all shadow-lg active:scale-95">Submit Bulk Entry</button>
+                <div><label className="block text-xs font-bold text-emerald-400 mb-1">Paye Count</label><input type="number" value={payeAmount} onChange={(e) => setPayeAmount(e.target.value)} className="w-full bg-slate-900/80 border border-emerald-500/50 rounded-lg px-3 py-2.5 outline-none focus:border-emerald-400 text-emerald-100 text-lg font-bold" placeholder="e.g. 5" /></div>
+                
+                <div className="mt-auto flex flex-col gap-3">
+                  <button onClick={handleAddWork} className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2">
+                    <CheckCircle size={18}/> Submit Work
+                  </button>
+                  {/* NAYA: Mark Leave Button */}
+                  <button onClick={handleAddBulkLeave} className="w-full py-3 bg-rose-600 hover:bg-rose-500 text-white rounded-xl font-bold transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2">
+                    <UserMinus size={18}/> Mark Leave (Absent)
+                  </button>
+                </div>
               </div>
 
-              <div className="w-full md:w-2/3 border-t md:border-t-0 md:border-l border-slate-700/50 pt-4 md:pt-0 md:pl-6">
-                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-3 gap-2">
-                  <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">Select Labourers ({selectedLabourIds.length} Selected)</label>
-                  <div className="relative">
-                    <Search size={14} className="absolute left-2.5 top-1/2 transform -translate-y-1/2 text-slate-400" />
-                    <input type="text" placeholder="Search..." value={searchBulk} onChange={(e) => setSearchBulk(e.target.value)} className="pl-8 pr-3 py-1.5 bg-slate-900/50 border border-slate-600 rounded-md text-xs focus:border-emerald-500 outline-none w-full sm:w-48" />
+              {/* NAYA: Fullscreen Selection Toggle Container */}
+              <div className={fullScreenList === "work" ? "fixed inset-0 z-[120] bg-[#0f172a] p-4 md:p-8 flex flex-col animate-in zoom-in-95 duration-200" : "w-full md:w-2/3 border-t md:border-t-0 md:border-l border-slate-700/50 pt-4 md:pt-0 md:pl-6 flex flex-col"}>
+                
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-3 gap-3">
+                  <label className="text-xs md:text-sm font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                    Select Labourers <span className="bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-md">{selectedLabourIds.length} Selected</span>
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <div className="relative flex-1">
+                      <Search size={14} className="absolute left-2.5 top-1/2 transform -translate-y-1/2 text-slate-400" />
+                      <input type="text" placeholder="Search..." value={searchBulk} onChange={(e) => setSearchBulk(e.target.value)} className="pl-8 pr-3 py-2 bg-slate-900/80 border border-slate-600 rounded-lg text-sm focus:border-emerald-500 outline-none w-full sm:w-48 shadow-inner" />
+                    </div>
+                    {/* Expand/Collapse Button */}
+                    <button onClick={() => setFullScreenList(fullScreenList === "work" ? null : "work")} className="p-2 bg-slate-800 hover:bg-slate-700 rounded-lg border border-slate-600 text-slate-300 transition-colors" title={fullScreenList === "work" ? "Minimize" : "Full Screen"}>
+                      {fullScreenList === "work" ? <Minimize2 size={18}/> : <Maximize2 size={18}/>}
+                    </button>
                   </div>
                 </div>
 
-                <div className="bg-slate-900/60 border border-slate-700/60 rounded-xl max-h-75 overflow-y-auto custom-scrollbar shadow-inner">
-                  <label className="flex items-center gap-3 p-3 hover:bg-slate-800/80 cursor-pointer border-b border-slate-700/50 sticky top-0 bg-slate-900/95 backdrop-blur z-10">
-                    <input type="checkbox" className="w-4 h-4 accent-emerald-500 rounded" checked={selectedLabourIds.length === filteredBulk.length && filteredBulk.length > 0} onChange={(e) => { e.target.checked ? setSelectedLabourIds(filteredBulk.map(l => l.id)) : setSelectedLabourIds([]); }} />
+                <div className={`bg-slate-900/60 border border-slate-700/60 rounded-xl overflow-y-auto custom-scrollbar shadow-inner flex-1 ${fullScreenList === "work" ? "" : "max-h-75"}`}>
+                  <label className="flex items-center gap-3 p-4 hover:bg-slate-800/80 cursor-pointer border-b border-slate-700/50 sticky top-0 bg-slate-900/95 backdrop-blur z-10">
+                    <input type="checkbox" className="w-5 h-5 accent-emerald-500 rounded" checked={selectedLabourIds.length === filteredBulk.length && filteredBulk.length > 0} onChange={(e) => { e.target.checked ? setSelectedLabourIds(filteredBulk.map(l => l.id)) : setSelectedLabourIds([]); }} />
                     <span className="text-sm font-bold text-white">Select All ({filteredBulk.length})</span>
                   </label>
                   {filteredBulk.length === 0 && <p className="text-slate-500 text-sm p-4 text-center">No labourers found.</p>}
                   {filteredBulk.map(lab => (
-                    <label key={lab.id} className={`flex items-center justify-between p-3 cursor-pointer border-b border-slate-700/30 last:border-0 transition-colors ${selectedLabourIds.includes(lab.id) ? 'bg-emerald-900/20' : 'hover:bg-slate-800/50'}`}>
+                    <label key={lab.id} className={`flex items-center justify-between p-4 cursor-pointer border-b border-slate-700/30 last:border-0 transition-colors ${selectedLabourIds.includes(lab.id) ? 'bg-emerald-900/20' : 'hover:bg-slate-800/50'}`}>
                       <div className="flex items-center gap-3">
-                        <input type="checkbox" className="w-4 h-4 accent-emerald-500 rounded" checked={selectedLabourIds.includes(lab.id)} onChange={(e) => { e.target.checked ? setSelectedLabourIds([...selectedLabourIds, lab.id]) : setSelectedLabourIds(selectedLabourIds.filter(id => id !== lab.id)); }} />
-                        <div><span className={`text-sm font-semibold block ${selectedLabourIds.includes(lab.id) ? 'text-emerald-300' : 'text-slate-300'}`}>{lab.name}</span></div>
+                        <input type="checkbox" className="w-5 h-5 accent-emerald-500 rounded" checked={selectedLabourIds.includes(lab.id)} onChange={(e) => { e.target.checked ? setSelectedLabourIds([...selectedLabourIds, lab.id]) : setSelectedLabourIds(selectedLabourIds.filter(id => id !== lab.id)); }} />
+                        <div><span className={`text-sm md:text-base font-semibold block ${selectedLabourIds.includes(lab.id) ? 'text-emerald-300' : 'text-slate-300'}`}>{lab.name} <span className="text-[10px] text-slate-500 ml-1">ID:{lab.loginId}</span></span></div>
                       </div>
                       <span className="text-xs font-medium text-slate-400 bg-slate-800 px-2 py-1 rounded-md">Rate: ₹{lab.ratePerPaya}</span>
                     </label>
                   ))}
                 </div>
+
+                {/* Only show "Done" button if fullscreen to minimize */}
+                {fullScreenList === "work" && (
+                  <button onClick={() => setFullScreenList(null)} className="w-full mt-4 py-4 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-lg shadow-lg">
+                    Done Selecting
+                  </button>
+                )}
               </div>
             </div>
 
@@ -816,20 +876,28 @@ export default function AdminDashboard() {
                 <div className="overflow-x-auto">
                   <table className="w-full text-left border-collapse min-w-125">
                     <thead>
-                      <tr className="bg-slate-900/60 text-slate-400 text-xs uppercase tracking-wider border-b border-slate-700"><th className="p-4 font-semibold">Name</th><th className="p-4 font-semibold">Location</th><th className="p-4 font-semibold text-emerald-400">Total Paye</th><th className="p-4 font-semibold text-cyan-400">Earned</th></tr>
+                      <tr className="bg-slate-900/60 text-slate-400 text-xs uppercase tracking-wider border-b border-slate-700"><th className="p-4 font-semibold">Name</th><th className="p-4 font-semibold">Location</th><th className="p-4 font-semibold text-emerald-400">Total Paye / Status</th><th className="p-4 font-semibold text-cyan-400">Earned</th></tr>
                     </thead>
                     <tbody className="divide-y divide-slate-700/50 text-slate-200 text-sm">
-                      {currentLabourers.filter(lab => lab.entries.some((e:any) => e.date === entryDate && e.payeCount > 0)).length === 0 ? (
-                        <tr><td colSpan={4} className="p-6 text-center text-slate-500 italic">No work entries found for this date.</td></tr>
+                      {currentLabourers.filter(lab => lab.entries.some((e:any) => e.date === entryDate && (e.payeCount > 0 || e.isLeave))).length === 0 ? (
+                        <tr><td colSpan={4} className="p-6 text-center text-slate-500 italic">No work or leave entries found for this date.</td></tr>
                       ) : (
                         currentLabourers.map(lab => {
-                          const entry = lab.entries.find((e:any) => e.date === entryDate && e.payeCount > 0);
+                          const entry = lab.entries.find((e:any) => e.date === entryDate && (e.payeCount > 0 || e.isLeave));
                           if (!entry) return null;
                           const rate = entry.customRatePerPaya !== undefined ? entry.customRatePerPaya : (lab.ratePerPaya || 0);
                           const earned = entry.payeCount * rate;
                           return (
                             <tr key={lab.id} className="hover:bg-slate-800/40 transition-colors">
-                              <td className="p-4 font-medium text-white">{lab.name}</td><td className="p-4 text-slate-400">{lab.paya || "-"}</td><td className="p-4 font-bold text-emerald-400 bg-emerald-900/10">{entry.payeCount} <span className="text-xs text-slate-500 font-normal ml-1">(@ ₹{rate})</span></td><td className="p-4 font-bold text-cyan-400">₹{earned.toLocaleString()}</td>
+                              <td className="p-4 font-medium text-white">{lab.name}</td><td className="p-4 text-slate-400">{lab.paya || "-"}</td>
+                              <td className="p-4 font-bold">
+                                {entry.isLeave ? (
+                                  <span className="text-rose-400 bg-rose-500/10 px-2 py-1 rounded border border-rose-500/20 flex items-center gap-1.5 w-fit"><UserMinus size={14}/> LEAVE</span>
+                                ) : (
+                                  <span className="text-emerald-400 bg-emerald-900/10 px-2 py-1 rounded">{entry.payeCount} <span className="text-xs text-slate-500 font-normal ml-1">(@ ₹{rate})</span></span>
+                                )}
+                              </td>
+                              <td className="p-4 font-bold text-cyan-400">{entry.isLeave ? "-" : `₹${earned.toLocaleString()}`}</td>
                             </tr>
                           );
                         })
@@ -842,9 +910,56 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* ===================== KHARCHA TAB & BULK KHURAAK ===================== */}
+        {/* ===================== KHARCHA TAB & FULLSCREEN ===================== */}
         {activeTab === "kharcha" && (
           <div className="space-y-6 animate-in fade-in duration-300">
+            <div className="bg-slate-800/40 border border-slate-700/50 rounded-2xl p-6 shadow-xl flex flex-col md:flex-row gap-6 mt-6">
+              
+              <div className="w-full md:w-1/3 flex flex-col gap-4">
+                <h2 className="text-xl font-bold mb-2 text-orange-400 flex items-center gap-2"><CheckSquare size={22} /> Bulk Khuraak (Weekly)</h2>
+                <div><label className="block text-xs font-medium text-slate-400 mb-1">Date</label><input type="date" value={bulkKharchaDate} onChange={(e) => setBulkKharchaDate(e.target.value)} className="w-full bg-slate-900/80 border border-slate-600 rounded-lg px-3 py-2.5 outline-none focus:border-orange-500 text-sm" required /></div>
+                <div><label className="block text-xs font-bold text-orange-400 mb-1">Amount (For All Selected)</label><input type="number" value={bulkKharchaAmount} onChange={(e) => setBulkKharchaAmount(e.target.value)} className="w-full bg-slate-900/80 border border-orange-500/50 rounded-lg px-3 py-2.5 outline-none focus:border-orange-400 text-orange-100 text-lg font-bold" placeholder="e.g. 1000" /></div>
+                <button onClick={handleAddBulkKharcha} className="w-full mt-auto py-3.5 bg-orange-600 hover:bg-orange-500 text-white rounded-xl font-bold transition-all shadow-lg active:scale-95">Submit Bulk Khuraak</button>
+              </div>
+
+              {/* Kharcha Fullscreen Toggle */}
+              <div className={fullScreenList === "kharcha" ? "fixed inset-0 z-[120] bg-[#0f172a] p-4 md:p-8 flex flex-col animate-in zoom-in-95 duration-200" : "w-full md:w-2/3 border-t md:border-t-0 md:border-l border-slate-700/50 pt-4 md:pt-0 md:pl-6 flex flex-col"}>
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-3 gap-3">
+                  <label className="text-xs md:text-sm font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                    Select Labourers <span className="bg-orange-500/20 text-orange-400 px-2 py-0.5 rounded-md">{selectedKharchaIds.length} Selected</span>
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <div className="relative flex-1">
+                      <Search size={14} className="absolute left-2.5 top-1/2 transform -translate-y-1/2 text-slate-400" />
+                      <input type="text" placeholder="Search..." value={searchBulkKharcha} onChange={(e) => setSearchBulkKharcha(e.target.value)} className="pl-8 pr-3 py-2 bg-slate-900/80 border border-slate-600 rounded-lg text-sm focus:border-orange-500 outline-none w-full sm:w-48 shadow-inner" />
+                    </div>
+                    <button onClick={() => setFullScreenList(fullScreenList === "kharcha" ? null : "kharcha")} className="p-2 bg-slate-800 hover:bg-slate-700 rounded-lg border border-slate-600 text-slate-300 transition-colors">
+                      {fullScreenList === "kharcha" ? <Minimize2 size={18}/> : <Maximize2 size={18}/>}
+                    </button>
+                  </div>
+                </div>
+
+                <div className={`bg-slate-900/60 border border-slate-700/60 rounded-xl overflow-y-auto custom-scrollbar shadow-inner flex-1 ${fullScreenList === "kharcha" ? "" : "max-h-75"}`}>
+                  <label className="flex items-center gap-3 p-4 hover:bg-slate-800/80 cursor-pointer border-b border-slate-700/50 sticky top-0 bg-slate-900/95 backdrop-blur z-10">
+                    <input type="checkbox" className="w-5 h-5 accent-orange-500 rounded" checked={selectedKharchaIds.length === filteredBulkKharcha.length && filteredBulkKharcha.length > 0} onChange={(e) => { e.target.checked ? setSelectedKharchaIds(filteredBulkKharcha.map(l => l.id)) : setSelectedKharchaIds([]); }} />
+                    <span className="text-sm font-bold text-white">Select All ({filteredBulkKharcha.length})</span>
+                  </label>
+                  {filteredBulkKharcha.length === 0 && <p className="text-slate-500 text-sm p-4 text-center">No labourers found.</p>}
+                  {filteredBulkKharcha.map(lab => (
+                    <label key={lab.id} className={`flex items-center justify-between p-4 cursor-pointer border-b border-slate-700/30 last:border-0 transition-colors ${selectedKharchaIds.includes(lab.id) ? 'bg-orange-900/20' : 'hover:bg-slate-800/50'}`}>
+                      <div className="flex items-center gap-3">
+                        <input type="checkbox" className="w-5 h-5 accent-orange-500 rounded" checked={selectedKharchaIds.includes(lab.id)} onChange={(e) => { e.target.checked ? setSelectedKharchaIds([...selectedKharchaIds, lab.id]) : setSelectedKharchaIds(selectedKharchaIds.filter(id => id !== lab.id)); }} />
+                        <div><span className={`text-sm md:text-base font-semibold block ${selectedKharchaIds.includes(lab.id) ? 'text-orange-300' : 'text-slate-300'}`}>{lab.name}</span></div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+
+                {fullScreenList === "kharcha" && (
+                  <button onClick={() => setFullScreenList(null)} className="w-full mt-4 py-4 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-lg shadow-lg">Done Selecting</button>
+                )}
+              </div>
+            </div>
             
             <div className="bg-slate-800/40 border border-slate-700/50 rounded-2xl p-6 shadow-xl">
               <h2 className="text-xl font-bold mb-4 text-orange-400 flex items-center gap-2"><Wallet size={24} /> Single Expense (Kisi ek ko paise dena)</h2>
@@ -859,43 +974,6 @@ export default function AdminDashboard() {
                 <button type="submit" className="w-full py-2.5 bg-orange-600 hover:bg-orange-500 text-white rounded-lg font-bold transition shadow-md">Add Single Expense</button>
               </form>
             </div>
-
-            <div className="bg-slate-800/40 border border-slate-700/50 rounded-2xl p-6 shadow-xl flex flex-col md:flex-row gap-6 mt-6">
-              <div className="w-full md:w-1/3 flex flex-col gap-4">
-                <h2 className="text-xl font-bold mb-2 text-orange-400 flex items-center gap-2"><CheckSquare size={22} /> Bulk Khuraak (Weekly)</h2>
-                <div><label className="block text-xs font-medium text-slate-400 mb-1">Date</label><input type="date" value={bulkKharchaDate} onChange={(e) => setBulkKharchaDate(e.target.value)} className="w-full bg-slate-900/80 border border-slate-600 rounded-lg px-3 py-2.5 outline-none focus:border-orange-500 text-sm" required /></div>
-                <div><label className="block text-xs font-bold text-orange-400 mb-1">Amount (For All Selected)</label><input type="number" value={bulkKharchaAmount} onChange={(e) => setBulkKharchaAmount(e.target.value)} className="w-full bg-slate-900/80 border border-orange-500/50 rounded-lg px-3 py-2.5 outline-none focus:border-orange-400 text-orange-100 text-lg font-bold" placeholder="e.g. 1000" /></div>
-                <div className="mt-2 text-xs text-slate-400 bg-slate-900/50 p-3 rounded-lg border border-slate-700">💡 Jin labourers ko select karenge, un sabhi ke account mein fix "Khuraak" add ho jayegi.</div>
-                <button onClick={handleAddBulkKharcha} className="w-full mt-auto py-3.5 bg-orange-600 hover:bg-orange-500 text-white rounded-xl font-bold transition-all shadow-lg active:scale-95">Submit Bulk Khuraak</button>
-              </div>
-
-              <div className="w-full md:w-2/3 border-t md:border-t-0 md:border-l border-slate-700/50 pt-4 md:pt-0 md:pl-6">
-                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-3 gap-2">
-                  <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">Select Labourers ({selectedKharchaIds.length} Selected)</label>
-                  <div className="relative">
-                    <Search size={14} className="absolute left-2.5 top-1/2 transform -translate-y-1/2 text-slate-400" />
-                    <input type="text" placeholder="Search..." value={searchBulkKharcha} onChange={(e) => setSearchBulkKharcha(e.target.value)} className="pl-8 pr-3 py-1.5 bg-slate-900/50 border border-slate-600 rounded-md text-xs focus:border-orange-500 outline-none w-full sm:w-48" />
-                  </div>
-                </div>
-
-                <div className="bg-slate-900/60 border border-slate-700/60 rounded-xl max-h-75 overflow-y-auto custom-scrollbar shadow-inner">
-                  <label className="flex items-center gap-3 p-3 hover:bg-slate-800/80 cursor-pointer border-b border-slate-700/50 sticky top-0 bg-slate-900/95 backdrop-blur z-10">
-                    <input type="checkbox" className="w-4 h-4 accent-orange-500 rounded" checked={selectedKharchaIds.length === filteredBulkKharcha.length && filteredBulkKharcha.length > 0} onChange={(e) => { e.target.checked ? setSelectedKharchaIds(filteredBulkKharcha.map(l => l.id)) : setSelectedKharchaIds([]); }} />
-                    <span className="text-sm font-bold text-white">Select All ({filteredBulkKharcha.length})</span>
-                  </label>
-                  {filteredBulkKharcha.length === 0 && <p className="text-slate-500 text-sm p-4 text-center">No labourers found.</p>}
-                  {filteredBulkKharcha.map(lab => (
-                    <label key={lab.id} className={`flex items-center justify-between p-3 cursor-pointer border-b border-slate-700/30 last:border-0 transition-colors ${selectedKharchaIds.includes(lab.id) ? 'bg-orange-900/20' : 'hover:bg-slate-800/50'}`}>
-                      <div className="flex items-center gap-3">
-                        <input type="checkbox" className="w-4 h-4 accent-orange-500 rounded" checked={selectedKharchaIds.includes(lab.id)} onChange={(e) => { e.target.checked ? setSelectedKharchaIds([...selectedKharchaIds, lab.id]) : setSelectedKharchaIds(selectedKharchaIds.filter(id => id !== lab.id)); }} />
-                        <div><span className={`text-sm font-semibold block ${selectedKharchaIds.includes(lab.id) ? 'text-orange-300' : 'text-slate-300'}`}>{lab.name}</span></div>
-                      </div>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            </div>
-
           </div>
         )}
 

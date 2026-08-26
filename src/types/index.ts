@@ -7,6 +7,7 @@ export interface DailyEntry {
   kharcha: number;
   peshgi: number;
   remark?: string; 
+  isLeave?: boolean; // NAYA: Chhutti track karne ke liye
 }
 
 export interface Bhatta {
