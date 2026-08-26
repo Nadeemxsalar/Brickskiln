@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { saveLabourData, getLabourData } from "../../lib/storage";
 import { Labour, DailyEntry, Bhatta } from "../../types";
-import { Menu, X, FileText, LayoutDashboard, IndianRupee, Users, Building2, Layers, Wallet, Settings, Check, LogOut, CheckSquare, Search, AlertCircle, CheckCircle, TrendingDown, TrendingUp, ChevronRight, ChevronDown, History, BarChart3, Upload, FileSpreadsheet, Download, FileDown, Maximize2, Minimize2, UserMinus, ShieldAlert, Trash2, Plus, Sun, Moon } from "lucide-react";
+import { Menu, X, FileText, LayoutDashboard, IndianRupee, Users, Building2, Layers, Wallet, Settings, Check, LogOut, CheckSquare, Search, AlertCircle, CheckCircle, TrendingDown, TrendingUp, ChevronRight, ChevronDown, History, BarChart3, Upload, FileSpreadsheet, Download, FileDown, Maximize2, Minimize2, UserMinus, ShieldAlert, Trash2, Plus, Sun, Moon, Bell, Key, LockKeyhole } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid } from 'recharts';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -23,7 +23,7 @@ export default function AdminDashboard() {
   const [toast, setToast] = useState<{msg: string, type: "success" | "error"} | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
 
-  // NAYA: Theme and Admin Roles State
+  // Theme and Admin Roles State
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [adminList, setAdminList] = useState<string[]>([]);
   const [newAdminId, setNewAdminId] = useState("");
@@ -62,6 +62,14 @@ export default function AdminDashboard() {
 
   const [editingLabourId, setEditingLabourId] = useState<string | null>(null);
   const [editLabourData, setEditLabourData] = useState<{name: string, loginId: string, phone: string, paya: string, payeRate: number} | null>(null);
+
+  // NAYA: Modals for Delete & Password Reset
+  const [deleteLabourId, setDeleteLabourId] = useState<string | null>(null);
+  const [resetPasswordId, setResetPasswordId] = useState<string | null>(null);
+  const [newPasswordInput, setNewPasswordInput] = useState("");
+  
+  // NAYA: Notifications state
+  const [showNotifications, setShowNotifications] = useState(false);
 
   const showToast = (msg: string, type: "success" | "error" = "success") => {
     setToast({ msg, type });
@@ -144,7 +152,34 @@ export default function AdminDashboard() {
     router.push("/");
   };
 
-  // NAYA: Admin Role Management Handlers
+  // NAYA: Handle Admin Delete Labour
+  const handleDeleteLabour = () => {
+    if (!deleteLabourId) return;
+    const updated = labourers.filter(l => l.id !== deleteLabourId);
+    setLabourers(updated);
+    saveLabourData("bhatta_labourers", updated);
+    setDeleteLabourId(null);
+    showToast("User account successfully deleted!", "success");
+  };
+
+  // NAYA: Handle Reset Password
+  const handleResetPassword = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resetPasswordId || !newPasswordInput) return showToast("Password cannot be empty!", "error");
+    
+    const updated = labourers.map(l => {
+      if (l.id === resetPasswordId) return { ...l, password: newPasswordInput };
+      return l;
+    });
+    
+    setLabourers(updated);
+    saveLabourData("bhatta_labourers", updated);
+    setResetPasswordId(null);
+    setNewPasswordInput("");
+    showToast("Naya password set ho gaya!", "success");
+  };
+
+  // Admin Role Management Handlers
   const handleAddAdmin = (e: React.FormEvent) => {
     e.preventDefault();
     if(!newAdminId) return;
@@ -171,6 +206,19 @@ export default function AdminDashboard() {
 
   const currentLabourers = labourers.filter(lab => lab.bhattaId === activeBhattaId);
   const activeBhattaName = bhattas.find(b => b.id === activeBhattaId)?.name || "Bhatta";
+
+  // NAYA: Extract Notifications from Remarks
+  const notifications = currentLabourers.flatMap(lab => 
+    (lab.entries || [])
+      .filter((e: any) => e.remark && e.remark.trim() !== "")
+      .map((e: any) => ({
+        id: `${lab.id}_${e.date}`,
+        labName: lab.name,
+        labId: lab.id,
+        date: e.date,
+        remark: e.remark
+      }))
+  ).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 15); // Latest 15 remarks
 
   const overallStats = currentLabourers.reduce((acc, lab) => {
     let earned = 0;
@@ -468,6 +516,43 @@ export default function AdminDashboard() {
         </div>
       )}
 
+      {/* ===================== PASSWORD RESET MODAL ===================== */}
+      {resetPasswordId && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[150] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className={`w-full max-w-sm p-6 rounded-2xl shadow-2xl relative border ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
+            <button onClick={() => setResetPasswordId(null)} className={`absolute top-4 right-4 p-1.5 rounded-lg ${isDark ? 'text-slate-400 hover:text-white bg-slate-800' : 'text-slate-500 hover:text-slate-800 bg-slate-100'}`}><X size={18} /></button>
+            <div className="flex flex-col items-center text-center mb-6">
+              <div className="w-12 h-12 bg-blue-500/20 text-blue-500 rounded-full flex items-center justify-center mb-3"><LockKeyhole size={24}/></div>
+              <h2 className={`text-xl font-bold ${textMain}`}>Create New Password</h2>
+              <p className={`text-xs mt-1 ${textMuted}`}>Enter a new password for this user.</p>
+            </div>
+            <form onSubmit={handleResetPassword} className="space-y-4">
+              <div>
+                <input type="password" value={newPasswordInput} onChange={(e) => setNewPasswordInput(e.target.value)} placeholder="Type new password" required autoFocus className={`w-full rounded-xl px-4 py-3 outline-none font-bold transition-all border ${inputBg}`} />
+              </div>
+              <button type="submit" className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-md active:scale-95">
+                <Check size={18}/> Update Password
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ===================== DELETE CONFIRMATION MODAL ===================== */}
+      {deleteLabourId && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[150] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className={`w-full max-w-sm p-6 rounded-2xl shadow-2xl relative border text-center ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
+            <div className="w-16 h-16 bg-rose-500/20 text-rose-500 rounded-full flex items-center justify-center mx-auto mb-4"><AlertCircle size={32}/></div>
+            <h2 className={`text-xl font-bold mb-2 ${textMain}`}>Delete this account?</h2>
+            <p className={`text-sm mb-6 ${textMuted}`}>Ye action wapas nahi ho sakta. User ka saara hisaab aur entries delete ho jayengi.</p>
+            <div className="flex gap-3">
+              <button onClick={() => setDeleteLabourId(null)} className={`flex-1 py-3 rounded-xl font-bold transition-all ${isDark ? 'bg-slate-800 text-white hover:bg-slate-700' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>Cancel</button>
+              <button onClick={handleDeleteLabour} className="flex-1 py-3 bg-rose-600 hover:bg-rose-500 text-white rounded-xl font-bold transition-all shadow-md active:scale-95 flex items-center justify-center gap-2"><Trash2 size={18}/> Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showImportModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className={`w-full max-w-lg p-6 shadow-2xl relative rounded-2xl border ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
@@ -502,7 +587,39 @@ export default function AdminDashboard() {
             <span className="text-xs text-emerald-500 font-medium">{activeBhattaName}</span>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 md:gap-3">
+          
+          {/* NAYA: Notification Bell */}
+          <div className="relative">
+            <button onClick={() => setShowNotifications(!showNotifications)} className={`p-2 rounded-full transition-colors relative ${isDark ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-100 text-slate-600'}`}>
+              <Bell size={20} />
+              {notifications.length > 0 && <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-rose-500 rounded-full border border-[#0f172a] animate-pulse"></span>}
+            </button>
+            {showNotifications && (
+              <div className={`absolute right-0 mt-2 w-80 max-h-[400px] overflow-y-auto custom-scrollbar rounded-xl border shadow-2xl p-2 animate-in fade-in zoom-in-95 duration-200 ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
+                <div className="px-3 py-2 border-b mb-2 flex justify-between items-center sticky top-0 bg-inherit z-10">
+                  <h3 className={`font-bold text-sm ${textMain}`}>Recent Labour Notes</h3>
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500'}`}>{notifications.length} New</span>
+                </div>
+                {notifications.length === 0 ? (
+                  <p className={`p-4 text-center text-xs ${textMuted}`}>No notifications yet.</p>
+                ) : (
+                  <div className="space-y-1">
+                    {notifications.map(notif => (
+                      <div key={notif.id} className={`p-3 rounded-lg flex flex-col gap-1 transition-colors cursor-default ${isDark ? 'hover:bg-slate-800' : 'hover:bg-slate-50'}`}>
+                        <div className="flex justify-between items-start">
+                          <span className={`text-xs font-bold ${textMain}`}>{notif.labName}</span>
+                          <span className={`text-[10px] ${textMuted}`}>{notif.date}</span>
+                        </div>
+                        <p className={`text-xs italic bg-opacity-50 p-1.5 rounded border ${isDark ? 'text-blue-300 bg-blue-900/20 border-blue-500/20' : 'text-blue-700 bg-blue-50 border-blue-200'}`}>"{notif.remark}"</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           <button onClick={toggleTheme} className={`p-2 rounded-full transition-colors ${isDark ? 'bg-slate-800 text-yellow-400 hover:bg-slate-700' : 'bg-slate-100 text-slate-600 shadow-sm hover:bg-slate-200'}`}>
             {isDark ? <Sun size={18} /> : <Moon size={18} />}
           </button>
@@ -520,14 +637,13 @@ export default function AdminDashboard() {
         
         <div className="p-4 space-y-2 flex-1 overflow-y-auto custom-scrollbar">
           <button onClick={() => changeTab("dashboard")} className={`w-full flex items-center gap-3 p-3 rounded-xl transition font-medium ${activeTab === "dashboard" ? "bg-blue-600 text-white shadow-lg shadow-blue-500/30" : (isDark ? "hover:bg-slate-800 text-slate-300" : "hover:bg-slate-100 text-slate-600")}`}><LayoutDashboard size={20} /> Dashboard</button>
-          <button onClick={() => changeTab("manage")} className={`w-full flex items-center gap-3 p-3 rounded-xl transition font-medium ${activeTab === "manage" ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/30" : (isDark ? "hover:bg-slate-800 text-slate-300" : "hover:bg-slate-100 text-slate-600")}`}><Settings size={20} /> Manage Labour</button>
+          <button onClick={() => changeTab("manage")} className={`w-full flex items-center gap-3 p-3 rounded-xl transition font-medium ${activeTab === "manage" ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/30" : (isDark ? "hover:bg-slate-800 text-slate-300" : "hover:bg-slate-100 text-slate-600")}`}><Settings size={20} /> Manage & Control</button>
           <button onClick={() => changeTab("eent")} className={`w-full flex items-center gap-3 p-3 rounded-xl transition font-medium ${activeTab === "eent" ? "bg-emerald-600 text-white shadow-lg shadow-emerald-500/30" : (isDark ? "hover:bg-slate-800 text-slate-300" : "hover:bg-slate-100 text-slate-600")}`}><Layers size={20} /> Work Entry</button>
           <button onClick={() => changeTab("kharcha")} className={`w-full flex items-center gap-3 p-3 rounded-xl transition font-medium ${activeTab === "kharcha" ? "bg-orange-600 text-white shadow-lg shadow-orange-500/30" : (isDark ? "hover:bg-slate-800 text-slate-300" : "hover:bg-slate-100 text-slate-600")}`}><Wallet size={20} /> Expenses</button>
           <button onClick={() => changeTab("peshgi")} className={`w-full flex items-center gap-3 p-3 rounded-xl transition font-medium ${activeTab === "peshgi" ? "bg-rose-600 text-white shadow-lg shadow-rose-500/30" : (isDark ? "hover:bg-slate-800 text-slate-300" : "hover:bg-slate-100 text-slate-600")}`}><IndianRupee size={20} /> Advance (Peshgi)</button>
           <button onClick={() => changeTab("download")} className={`w-full flex items-center gap-3 p-3 rounded-xl transition mt-4 border font-medium ${activeTab === "download" ? "bg-cyan-600 text-white border-transparent shadow-lg shadow-cyan-500/30" : (isDark ? "border-cyan-500/20 hover:bg-slate-800 text-cyan-400" : "border-cyan-200 hover:bg-cyan-50 text-cyan-600")}`}><FileDown size={20} /> Download Receipt</button>
           
           <div className={`h-px w-full my-4 ${isDark ? 'bg-slate-700/50' : 'bg-slate-200'}`}></div>
-          {/* NAYA: Give Power / Role Management Tab */}
           <button onClick={() => changeTab("role")} className={`w-full flex items-center gap-3 p-3 rounded-xl transition font-medium ${activeTab === "role" ? "bg-violet-600 text-white shadow-lg shadow-violet-500/30" : (isDark ? "hover:bg-slate-800 text-violet-400" : "hover:bg-violet-50 text-violet-600")}`}><ShieldAlert size={20} /> Give Power (Admins)</button>
 
         </div>
@@ -675,7 +791,7 @@ export default function AdminDashboard() {
             <div className={`border rounded-2xl p-6 shadow-xl transition-all ${cardBg}`}>
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
                 <div>
-                  <h2 className={`text-xl font-extrabold flex items-center gap-2 ${isDark ? 'text-indigo-400' : 'text-indigo-600'}`}><Settings size={24} /> Labour Details & Rates</h2>
+                  <h2 className={`text-xl font-extrabold flex items-center gap-2 ${isDark ? 'text-indigo-400' : 'text-indigo-600'}`}><Settings size={24} /> Labour Details & Control</h2>
                 </div>
                 <div className="relative">
                   <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" />
@@ -684,7 +800,7 @@ export default function AdminDashboard() {
               </div>
               
               <div className={`overflow-x-auto border rounded-xl ${isDark ? 'border-slate-700/50' : 'border-slate-200'}`}>
-                <table className="w-full text-left border-collapse min-w-[800px]">
+                <table className="w-full text-left border-collapse min-w-[850px]">
                   <thead>
                     <tr className={`text-xs uppercase tracking-wider border-b ${tableHeader}`}>
                       <th className="p-4 font-bold">Name</th>
@@ -692,7 +808,7 @@ export default function AdminDashboard() {
                       <th className="p-4 font-bold">Mobile</th>
                       <th className="p-4 font-bold">Location</th>
                       <th className="p-4 font-bold text-emerald-500">Rate Per Paye (₹)</th>
-                      <th className="p-4 font-bold text-center">Action</th>
+                      <th className="p-4 font-bold text-center">Actions / Controls</th>
                     </tr>
                   </thead>
                   <tbody className={`text-sm ${tableBody}`}>
@@ -706,7 +822,24 @@ export default function AdminDashboard() {
                           <td className="p-3">{isEditing ? <input type="text" value={editLabourData?.phone} onChange={(e)=>setEditLabourData({...editLabourData!, phone: e.target.value})} className={`w-full rounded px-2 py-1.5 outline-none border font-medium ${inputBg}`}/> : lab.phone}</td>
                           <td className="p-3">{isEditing ? <input type="text" value={editLabourData?.paya} onChange={(e)=>setEditLabourData({...editLabourData!, paya: e.target.value})} className={`w-full rounded px-2 py-1.5 outline-none border font-medium ${inputBg}`}/> : (lab.paya || "-")}</td>
                           <td className="p-3">{isEditing ? <input type="number" value={editLabourData?.payeRate} onChange={(e)=>setEditLabourData({...editLabourData!, payeRate: Number(e.target.value)})} className={`w-full rounded px-2 py-1.5 outline-none border font-bold ${isDark ? 'bg-slate-900 border-emerald-500/50 text-emerald-400' : 'bg-emerald-50 border-emerald-300 text-emerald-700'}`}/> : <span className={`font-bold px-3 py-1 rounded-md ${isDark ? 'text-emerald-400 bg-emerald-500/10' : 'text-emerald-700 bg-emerald-100 border border-emerald-200'}`}>₹{lab.ratePerPaya || 0}</span>}</td>
-                          <td className="p-3 text-center">{isEditing ? <button onClick={() => handleSaveLabourEdit(lab.id)} className="bg-emerald-600 hover:bg-emerald-500 px-4 py-1.5 rounded-lg text-white font-bold transition-all shadow-md active:scale-95 flex items-center gap-1 mx-auto"><Check size={14}/> Save</button> : <button onClick={() => { setEditingLabourId(lab.id); setEditLabourData({name: lab.name, loginId: lab.loginId, phone: lab.phone, paya: lab.paya || "", payeRate: lab.ratePerPaya || 0}); }} className={`px-5 py-1.5 rounded-lg font-bold transition-all active:scale-95 ${isDark ? 'bg-slate-700 hover:bg-slate-600 text-slate-200' : 'bg-white border border-slate-300 shadow-sm hover:bg-slate-50 text-slate-700'}`}>Edit</button>}</td>
+                          <td className="p-3">
+                            <div className="flex items-center justify-center gap-2">
+                              {isEditing ? (
+                                <button onClick={() => handleSaveLabourEdit(lab.id)} className="bg-emerald-600 hover:bg-emerald-500 px-4 py-1.5 rounded-lg text-white font-bold transition-all shadow-md active:scale-95 flex items-center gap-1"><Check size={14}/> Save</button>
+                              ) : (
+                                <>
+                                  <button onClick={() => { setEditingLabourId(lab.id); setEditLabourData({name: lab.name, loginId: lab.loginId, phone: lab.phone, paya: lab.paya || "", payeRate: lab.ratePerPaya || 0}); }} className={`px-4 py-1.5 rounded-lg font-bold transition-all active:scale-95 ${isDark ? 'bg-slate-700 hover:bg-slate-600 text-slate-200' : 'bg-white border border-slate-300 shadow-sm hover:bg-slate-50 text-slate-700'}`}>Edit</button>
+                                  {/* NAYA: Password Reset & Delete Controls */}
+                                  <button onClick={() => setResetPasswordId(lab.id)} className={`p-1.5 rounded-lg transition-colors border ${isDark ? 'bg-slate-800 border-slate-700 hover:bg-blue-500/20 hover:text-blue-400 text-slate-400' : 'bg-white border-slate-300 hover:bg-blue-50 hover:text-blue-600 text-slate-500 shadow-sm'}`} title="Create/Reset Password">
+                                    <Key size={16} />
+                                  </button>
+                                  <button onClick={() => setDeleteLabourId(lab.id)} className={`p-1.5 rounded-lg transition-colors border ${isDark ? 'bg-slate-800 border-slate-700 hover:bg-rose-500/20 hover:text-rose-400 text-slate-400' : 'bg-white border-slate-300 hover:bg-rose-50 hover:text-rose-600 text-slate-500 shadow-sm'}`} title="Delete User">
+                                    <Trash2 size={16} />
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </td>
                         </tr>
                       )
                     })}
@@ -1001,7 +1134,7 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* ===================== NAYA: GIVE POWER (ROLE MANAGEMENT) TAB ===================== */}
+        {/* ===================== GIVE POWER (ROLE MANAGEMENT) TAB ===================== */}
         {activeTab === "role" && (
           <div className="space-y-6 animate-in fade-in duration-300 max-w-4xl mx-auto">
             <div className={`border rounded-2xl p-6 md:p-8 shadow-xl transition-all ${cardBg}`}>
