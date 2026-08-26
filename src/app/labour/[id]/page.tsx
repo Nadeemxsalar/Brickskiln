@@ -3,8 +3,7 @@ import { useEffect, useState, use } from "react";
 import { useRouter } from "next/navigation";
 import { getLabourData, saveLabourData } from "../../../lib/storage";
 import { Labour } from "../../../types";
-// NAYA: UserMinus icon import kiya gaya hai chhutti ke liye
-import { IndianRupee, ArrowLeft, Layers, MessageSquare, MessageSquareText, Check, LayoutList, Table, Edit3, X, PlusCircle, LogOut, Calculator, Download, UserMinus } from "lucide-react";
+import { IndianRupee, ArrowLeft, Layers, MessageSquare, MessageSquareText, Check, LayoutList, Table, Edit3, X, PlusCircle, LogOut, Calculator, Download, UserMinus, Sun, Moon } from "lucide-react";
 import Link from "next/link";
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -18,6 +17,9 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
 
   const [isAdmin, setIsAdmin] = useState(false);
   const [isAuthorized, setIsAuthorized] = useState(false);
+  
+  // Theme State
+  const [theme, setTheme] = useState<"dark" | "light">("dark");
 
   const [editingRemark, setEditingRemark] = useState<{ date: string; text: string } | null>(null);
   const [editingRowDate, setEditingRowDate] = useState<string | null>(null);
@@ -41,17 +43,27 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
       return;
     }
 
+    // Load saved theme
+    const savedTheme = localStorage.getItem("app_theme") as "dark" | "light";
+    if (savedTheme) setTheme(savedTheme);
+
     const data: Labour[] = getLabourData("bhatta_labourers") || [];
     const foundLabour = data.find((l) => l.id === id);
     if (foundLabour) setLabour(foundLabour);
   }, [id, router]);
+
+  const toggleTheme = () => {
+    const newTheme = theme === "dark" ? "light" : "dark";
+    setTheme(newTheme);
+    localStorage.setItem("app_theme", newTheme);
+  };
 
   const handleLogout = () => {
     localStorage.removeItem("bhatta_session");
     router.push("/");
   };
 
-  if (!isAuthorized || !labour) return <div className="min-h-screen flex items-center justify-center text-white bg-[#0f172a] font-sans">Loading Data...</div>;
+  if (!isAuthorized || !labour) return <div className="min-h-screen flex items-center justify-center text-slate-400 bg-[#0f172a] font-sans">Loading Data...</div>;
 
   const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
   const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -96,8 +108,6 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
     const currentDefaultRate = labour.ratePerPaya || 0;
 
     const allLabourers = getLabourData("bhatta_labourers") || [];
-    let totalPayeSum = 0;
-    let totalKharchaSum = 0;
 
     const updatedLabourers = allLabourers.map((l: any) => {
       if (l.id === labour.id) {
@@ -115,10 +125,7 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
           updatedEntries.push({ id: Date.now().toString() + Math.random().toString(), date: dateStr, payeCount: newPaye, customRatePerPaya: currentDefaultRate, kharcha: newKharcha, peshgi: 0, isLeave: false });
         }
 
-        totalPayeSum = updatedEntries.reduce((sum: number, e: any) => sum + (e.payeCount || 0), 0);
-        totalKharchaSum = updatedEntries.reduce((sum: number, e: any) => sum + (e.kharcha || 0), 0);
-
-        const updatedLabour = { ...l, totalPaye: totalPayeSum, totalKharcha: totalKharchaSum, entries: updatedEntries };
+        const updatedLabour = { ...l, entries: updatedEntries };
         setLabour(updatedLabour);
         return updatedLabour;
       }
@@ -129,7 +136,6 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
     setEditingRowDate(null);
   };
 
-  // NAYA: Admin ke liye Individual Chhutti lagane ka function
   const handleToggleLeave = (dateStr: string) => {
     if (!isAdmin) return;
     const allLabourers = getLabourData("bhatta_labourers") || [];
@@ -147,13 +153,7 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
 
         if (!entryExists) {
           updatedEntries.push({ 
-            id: Date.now().toString() + Math.random().toString(), 
-            date: dateStr, 
-            payeCount: 0, 
-            customRatePerPaya: l.ratePerPaya || 0,
-            kharcha: 0, 
-            peshgi: 0, 
-            isLeave: true 
+            id: Date.now().toString() + Math.random().toString(), date: dateStr, payeCount: 0, customRatePerPaya: l.ratePerPaya || 0, kharcha: 0, peshgi: 0, isLeave: true 
           });
         }
         
@@ -167,19 +167,23 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
   };
 
   const defaultPayeRate = labour.ratePerPaya || 0;
-  let lifetimeEarned = 0;
+  let calculatedEarned = 0;
+  let calculatedKharcha = 0;
+  let calculatedPeshgi = 0;
+
   const safeEntries = Array.isArray(labour.entries) ? labour.entries : [];
   
   safeEntries.forEach(e => {
     const activeRate = e.customRatePerPaya !== undefined ? e.customRatePerPaya : defaultPayeRate;
-    lifetimeEarned += (e.payeCount || 0) * activeRate;
+    if (!e.isLeave) {
+      calculatedEarned += (e.payeCount || 0) * activeRate;
+    }
+    calculatedKharcha += Number(e.kharcha || 0);
+    calculatedPeshgi += Number(e.peshgi || 0);
   });
 
-  const lifetimeKharcha = labour.totalKharcha || 0;
-  const lifetimePeshgi = labour.totalPeshgi !== undefined ? labour.totalPeshgi : ((labour as any).totalAdvance || 0);
-
-  const deductions = lifetimeKharcha + (includePeshgi ? lifetimePeshgi : 0);
-  const grandTotal = lifetimeEarned - deductions;
+  const deductions = calculatedKharcha + (includePeshgi ? calculatedPeshgi : 0);
+  const grandTotal = Math.round(calculatedEarned - deductions);
 
   const downloadMyParchi = () => {
     const doc = new jsPDF();
@@ -196,9 +200,9 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
     doc.text(`Location: ${labour.paya || "-"}`, 14, 56);
     
     doc.setFontSize(12);
-    doc.text(`Total Kamai: Rs ${lifetimeEarned.toLocaleString()}`, 120, 32);
-    doc.text(`Total Kharcha: Rs ${lifetimeKharcha.toLocaleString()}`, 120, 40);
-    doc.text(`Total Peshgi: Rs ${lifetimePeshgi.toLocaleString()}`, 120, 48);
+    doc.text(`Total Kamai: Rs ${calculatedEarned.toLocaleString()}`, 120, 32);
+    doc.text(`Total Kharcha: Rs ${calculatedKharcha.toLocaleString()}`, 120, 40);
+    doc.text(`Total Peshgi: Rs ${calculatedPeshgi.toLocaleString()}`, 120, 48);
     
     doc.setFont("helvetica", "bold");
     if(grandTotal < 0) {
@@ -211,12 +215,12 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
       doc.text(`Final Balance: Rs ${grandTotal.toLocaleString()} ${text}`, 120, 56);
     }
 
-    const tableData = (labour.entries || [])
+    const tableData = safeEntries
       .filter((e:any) => e.payeCount > 0 || e.kharcha > 0 || e.peshgi !== 0 || e.remark || e.isLeave)
       .map((e:any) => [
         e.date,
-        e.isLeave ? "LEAVE" : (e.payeCount || 0), // PDF me Leave Print hoga
-        e.isLeave ? "-" : ((e.payeCount || 0) * (e.customRatePerPaya !== undefined ? e.customRatePerPaya : (labour.ratePerPaya || 0))),
+        e.isLeave ? "LEAVE" : (e.payeCount || 0),
+        e.isLeave ? "-" : ((e.payeCount || 0) * (e.customRatePerPaya !== undefined ? e.customRatePerPaya : defaultPayeRate)),
         e.kharcha || 0,
         e.peshgi || 0,
         e.remark || "-"
@@ -246,103 +250,119 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
       const kharcha = entry.kharcha || 0;
       const activeRate = entry.customRatePerPaya !== undefined ? entry.customRatePerPaya : defaultPayeRate;
 
-      monthTotalPaye += paye;
-      monthTotalEarnings += (paye * activeRate);
+      if(!entry.isLeave) {
+        monthTotalPaye += paye;
+        monthTotalEarnings += (paye * activeRate);
+      }
       monthTotalExpenses += kharcha;
     }
   }
 
   const isCard = viewMode === "card";
-  const inputBaseStyle = "bg-[#1e293b] border border-slate-600 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 rounded-md px-3 py-1.5 text-sm outline-none transition-all shadow-inner";
+
+  // Dynamic Theme Classes
+  const isDark = theme === "dark";
+  const bgMain = isDark ? "bg-[#0f172a] text-white" : "bg-slate-50 text-slate-900";
+  const cardBg = isDark ? "bg-slate-800/60 border-slate-700/80" : "bg-white border-slate-200 shadow-xl";
+  const statBoxBg = isDark ? "bg-slate-900/60" : "bg-slate-50";
+  const textMain = isDark ? "text-white" : "text-slate-900";
+  const textMuted = isDark ? "text-slate-400" : "text-slate-500";
+  const inputBaseStyle = `border rounded-md px-3 py-1.5 text-sm outline-none transition-all shadow-inner ${isDark ? "bg-slate-900 border-slate-600 focus:border-blue-400 text-white placeholder-slate-500" : "bg-slate-50 border-slate-300 focus:border-blue-500 text-slate-900 placeholder-slate-400"}`;
+  
+  const tableHeaderBg = isDark ? "bg-slate-800/80 text-slate-300 border-slate-700/60" : "bg-slate-100 text-slate-700 border-slate-200";
+  const tableBodyStyle = isDark ? "divide-slate-700/50 text-slate-200" : "divide-slate-200 text-slate-700";
+  const tableRowNormal = isDark ? "bg-slate-800/30 border-slate-700/50 hover:bg-slate-800/60" : "bg-white border-slate-200 hover:bg-slate-50";
+  const tableRowActive = isDark ? "bg-slate-800/80 border-slate-700 shadow-md" : "bg-blue-50/50 border-blue-200 shadow-sm";
+  const tfootBg = isDark ? "bg-slate-800 border-slate-600/50" : "bg-slate-100 border-slate-300";
 
   return (
-    <div className="min-h-screen bg-[#0f172a] text-white p-4 md:p-8 font-sans pb-20 selection:bg-blue-500/30">
+    <div className={`min-h-screen font-sans pb-20 selection:bg-blue-500/30 transition-colors duration-300 p-4 md:p-8 ${bgMain}`}>
       <div className="max-w-7xl mx-auto space-y-6">
 
-        {/* 🟢 HEADER - FIXED FOR MOBILE */}
+        {/* HEADER */}
         <div className="flex justify-between items-start w-full">
-          
-          {/* Left Side: Back button + Info */}
           <div className="flex items-start gap-3">
             {isAdmin && (
-              <Link href="/admin" className="p-2 md:p-2.5 bg-slate-800 hover:bg-slate-700 rounded-xl transition border border-slate-700 shrink-0 shadow-sm mt-0.5">
-                <ArrowLeft className="w-5 h-5 text-gray-300" />
+              <Link href="/admin" className={`p-2 md:p-2.5 rounded-xl transition border shrink-0 shadow-sm mt-0.5 ${isDark ? 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-300' : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-600'}`}>
+                <ArrowLeft className="w-5 h-5" />
               </Link>
             )}
             <div className="flex flex-col gap-1.5">
               <div className="flex items-center gap-2 flex-wrap">
-                <h1 className="text-2xl md:text-4xl font-extrabold tracking-tight bg-gradient-to-r from-emerald-400 via-cyan-400 to-blue-400 bg-clip-text text-transparent drop-shadow-sm">
+                <h1 className={`text-2xl md:text-4xl font-extrabold tracking-tight bg-clip-text text-transparent drop-shadow-sm ${isDark ? 'bg-gradient-to-r from-emerald-400 via-cyan-400 to-blue-400' : 'bg-gradient-to-r from-emerald-600 via-cyan-600 to-blue-600'}`}>
                   {labour.name} 
                 </h1>
                 {(labour as any).loginId && (
-                  <span className="text-xs md:text-sm font-bold bg-blue-900/40 text-blue-300 border border-blue-500/30 px-2.5 py-1 rounded-md">
+                  <span className={`text-xs md:text-sm font-bold border px-2.5 py-1 rounded-md ${isDark ? 'bg-blue-900/40 text-blue-300 border-blue-500/30' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
                     ID: {(labour as any).loginId}
                   </span>
                 )}
               </div>
               <div className="flex flex-wrap gap-2 mt-1">
                 {isAdmin && ( 
-                  <span className="text-emerald-300 text-[10px] md:text-xs font-medium bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20 flex items-center gap-1">
+                  <span className={`text-[10px] md:text-xs font-bold px-2.5 py-1 rounded-full border flex items-center gap-1 ${isDark ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/20' : 'text-emerald-700 bg-emerald-50 border-emerald-200'}`}>
                     <IndianRupee className="w-3 h-3" /> Rate: ₹{defaultPayeRate}
                   </span>
                 )}
-                <span className="text-blue-300 text-[10px] md:text-xs font-medium bg-blue-500/10 px-2.5 py-1 rounded-full border border-blue-500/20 flex items-center gap-1">
+                <span className={`text-[10px] md:text-xs font-bold px-2.5 py-1 rounded-full border flex items-center gap-1 ${isDark ? 'text-blue-300 bg-blue-500/10 border-blue-500/20' : 'text-blue-700 bg-blue-50 border-blue-200'}`}>
                   <Layers className="w-3 h-3" /> Loc: {labour.paya || "-"}
                 </span>
               </div>
             </div>
           </div>
 
-          {/* Right Side: Logout Button */}
-          <button 
-            onClick={handleLogout} 
-            className="shrink-0 flex items-center gap-1.5 px-3 py-2 bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white rounded-lg transition text-xs font-bold border border-red-500/20"
-          >
-            <LogOut size={16}/> <span className="hidden md:inline">Logout</span>
-          </button>
+          <div className="flex items-center gap-2 md:gap-3 shrink-0">
+            <button onClick={toggleTheme} className={`p-2 rounded-full transition-colors ${isDark ? 'bg-slate-800 text-yellow-400 hover:bg-slate-700' : 'bg-white text-slate-600 shadow-md hover:bg-slate-50'}`}>
+              {isDark ? <Sun size={18} /> : <Moon size={18} />}
+            </button>
+            <button onClick={handleLogout} className="flex items-center gap-1.5 px-3 py-2 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-lg transition text-xs font-bold border border-red-500/20">
+              <LogOut size={16}/> <span className="hidden md:inline">Logout</span>
+            </button>
+          </div>
         </div>
 
-        {/* 🟢 GRAND TOTAL SECTION */}
-        <div className="bg-slate-800/60 border border-slate-700/80 rounded-3xl p-5 md:p-8 shadow-2xl relative overflow-hidden">
+        {/* GRAND TOTAL SECTION */}
+        <div className={`border rounded-3xl p-5 md:p-8 relative overflow-hidden transition-colors ${cardBg}`}>
           <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
             
             <div className="flex-1 w-full">
-              <p className="text-slate-400 font-bold tracking-widest text-xs uppercase mb-2 flex items-center gap-2">
-                <Calculator size={16} /> Final Net Balance
+              <p className={`font-bold tracking-widest text-xs uppercase mb-2 flex items-center gap-2 ${textMuted}`}>
+                <Calculator size={16} /> Final Net Balance (Cut-Pit Ke Baad)
               </p>
-              <h2 className={`text-4xl md:text-5xl font-extrabold ${grandTotal < 0 ? 'text-rose-500' : 'text-emerald-400'}`}>
+              <h2 className={`text-4xl md:text-5xl font-extrabold ${grandTotal < 0 ? (isDark ? 'text-rose-500' : 'text-rose-600') : (isDark ? 'text-emerald-400' : 'text-emerald-600')}`}>
                 {grandTotal < 0 ? "-" : ""}₹{Math.abs(grandTotal).toLocaleString()}
                 
-                <span className="block md:inline-block text-sm md:text-lg font-semibold ml-0 md:ml-3 mt-1 md:mt-0 text-slate-300 opacity-90">
+                <span className={`block md:inline-block text-sm md:text-lg font-semibold ml-0 md:ml-3 mt-1 md:mt-0 opacity-90 ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
                   {grandTotal < 0 
                     ? (isAdmin ? "(Labour Par Nikal Rahe Hain)" : "(Aap par Advance nikal raha hai)") 
                     : (isAdmin ? "(Labour Ko Dene Hain)" : "(Aapko Bhatte se lene hain)")}
                 </span>
               </h2>
               
-              <div className="grid grid-cols-3 gap-2 md:gap-4 mt-6 pt-5 border-t border-slate-700/50">
-                <div className="bg-slate-900/60 p-3 md:p-4 rounded-xl border border-cyan-500/20 text-center flex flex-col justify-center">
-                  <span className="text-[10px] md:text-xs text-cyan-500/80 uppercase tracking-widest font-bold mb-1">Kamai</span>
-                  <span className="text-sm md:text-xl font-extrabold text-cyan-400">₹{lifetimeEarned.toLocaleString()}</span>
+              <div className={`grid grid-cols-3 gap-2 md:gap-4 mt-6 pt-5 border-t ${isDark ? 'border-slate-700/50' : 'border-slate-200'}`}>
+                <div className={`p-3 md:p-4 rounded-xl border text-center flex flex-col justify-center shadow-inner ${statBoxBg} ${isDark ? 'border-cyan-500/20' : 'border-cyan-200'}`}>
+                  <span className={`text-[10px] md:text-xs uppercase tracking-widest font-bold mb-1 ${isDark ? 'text-cyan-500/80' : 'text-cyan-600'}`}>Kul Kamai</span>
+                  <span className={`text-sm md:text-xl font-extrabold ${isDark ? 'text-cyan-400' : 'text-cyan-700'}`}>₹{calculatedEarned.toLocaleString()}</span>
                 </div>
-                <div className="bg-slate-900/60 p-3 md:p-4 rounded-xl border border-orange-500/20 text-center flex flex-col justify-center">
-                  <span className="text-[10px] md:text-xs text-orange-500/80 uppercase tracking-widest font-bold mb-1">Kharcha</span>
-                  <span className="text-sm md:text-xl font-extrabold text-orange-400">₹{lifetimeKharcha.toLocaleString()}</span>
+                <div className={`p-3 md:p-4 rounded-xl border text-center flex flex-col justify-center shadow-inner ${statBoxBg} ${isDark ? 'border-orange-500/20' : 'border-orange-200'}`}>
+                  <span className={`text-[10px] md:text-xs uppercase tracking-widest font-bold mb-1 ${isDark ? 'text-orange-500/80' : 'text-orange-600'}`}>Kharcha Katoti</span>
+                  <span className={`text-sm md:text-xl font-extrabold ${isDark ? 'text-orange-400' : 'text-orange-700'}`}>- ₹{calculatedKharcha.toLocaleString()}</span>
                 </div>
-                <div className="bg-slate-900/60 p-3 md:p-4 rounded-xl border border-rose-500/20 text-center flex flex-col justify-center">
-                  <span className="text-[10px] md:text-xs text-rose-500/80 uppercase tracking-widest font-bold mb-1">Peshgi</span>
-                  <span className="text-sm md:text-xl font-extrabold text-rose-400">₹{lifetimePeshgi.toLocaleString()}</span>
+                <div className={`p-3 md:p-4 rounded-xl text-center flex flex-col justify-center transition-all duration-300 shadow-inner ${statBoxBg} ${includePeshgi ? (isDark ? 'border border-rose-500/20' : 'border border-rose-200') : (isDark ? 'border border-slate-700/50 opacity-50' : 'border border-slate-200 opacity-50')}`}>
+                  <span className={`text-[10px] md:text-xs uppercase tracking-widest font-bold mb-1 ${includePeshgi ? (isDark ? 'text-rose-500/80' : 'text-rose-600') : textMuted}`}>Peshgi (Advance)</span>
+                  <span className={`text-sm md:text-xl font-extrabold ${includePeshgi ? (isDark ? 'text-rose-400' : 'text-rose-700') : `${textMuted} line-through`}`}>
+                    {calculatedPeshgi >= 0 ? `- ₹${calculatedPeshgi.toLocaleString()}` : `+ ₹${Math.abs(calculatedPeshgi).toLocaleString()}`}
+                  </span>
                 </div>
               </div>
             </div>
 
-            {/* Actions: Toggle & Download */}
             <div className="flex items-center gap-3 w-full lg:w-auto shrink-0 mt-2 lg:mt-0">
-              <div className="bg-slate-900/80 p-1.5 rounded-xl border border-slate-700 w-full lg:w-auto flex flex-1 lg:flex-none">
-                <button onClick={() => setIncludePeshgi(true)} className={`flex-1 lg:flex-none px-4 py-2.5 rounded-lg text-sm font-bold transition-all ${includePeshgi ? "bg-blue-600 text-white shadow-md" : "text-slate-400 hover:text-white"}`}>
+              <div className={`p-1.5 rounded-xl border w-full lg:w-auto flex flex-1 lg:flex-none ${isDark ? 'bg-slate-900/80 border-slate-700' : 'bg-slate-100 border-slate-200'}`}>
+                <button onClick={() => setIncludePeshgi(true)} className={`flex-1 lg:flex-none px-4 py-2.5 rounded-lg text-sm font-bold transition-all ${includePeshgi ? "bg-blue-600 text-white shadow-md" : (isDark ? "text-slate-400 hover:text-white" : "text-slate-500 hover:text-slate-900")}`}>
                   Include Peshgi
                 </button>
-                <button onClick={() => setIncludePeshgi(false)} className={`flex-1 lg:flex-none px-4 py-2.5 rounded-lg text-sm font-bold transition-all ${!includePeshgi ? "bg-slate-600 text-white shadow-md" : "text-slate-400 hover:text-white"}`}>
+                <button onClick={() => setIncludePeshgi(false)} className={`flex-1 lg:flex-none px-4 py-2.5 rounded-lg text-sm font-bold transition-all ${!includePeshgi ? (isDark ? "bg-slate-600 text-white shadow-md" : "bg-white text-slate-900 shadow-sm border border-slate-200") : (isDark ? "text-slate-400 hover:text-white" : "text-slate-500 hover:text-slate-900")}`}>
                   Exclude Peshgi
                 </button>
               </div>
@@ -354,66 +374,64 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
           </div>
         </div>
 
-        {/* 🟢 MONTH SUMMARY */}
+        {/* MONTH SUMMARY */}
         <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 md:gap-5">
-          <div className="col-span-2 xl:col-span-1 bg-slate-800/80 backdrop-blur-xl border border-slate-700/50 p-4 rounded-2xl flex items-center justify-between shadow-lg">
-            <button onClick={() => { if(currentMonth===0){setCurrentMonth(11); setCurrentYear(p=>p-1);} else setCurrentMonth(p=>p-1); }} className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm font-medium transition-colors">Prev</button>
+          <div className={`col-span-2 xl:col-span-1 backdrop-blur-xl border p-4 rounded-2xl flex items-center justify-between shadow-sm transition-colors ${isDark ? 'bg-slate-800/80 border-slate-700/50' : 'bg-white border-slate-200'}`}>
+            <button onClick={() => { if(currentMonth===0){setCurrentMonth(11); setCurrentYear(p=>p-1);} else setCurrentMonth(p=>p-1); }} className={`px-3 py-1.5 rounded-lg text-sm font-bold transition-colors ${isDark ? 'bg-slate-700 hover:bg-slate-600' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'}`}>Prev</button>
             <div className="text-center">
-              <h2 className="text-lg font-bold tracking-wide">{monthNames[currentMonth]} {currentYear}</h2>
+              <h2 className={`text-lg font-bold tracking-wide ${textMain}`}>{monthNames[currentMonth]} {currentYear}</h2>
             </div>
-            <button onClick={() => { if(currentMonth===11){setCurrentMonth(0); setCurrentYear(p=>p+1);} else setCurrentMonth(p=>p+1); }} className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm font-medium transition-colors">Next</button>
+            <button onClick={() => { if(currentMonth===11){setCurrentMonth(0); setCurrentYear(p=>p+1);} else setCurrentMonth(p=>p+1); }} className={`px-3 py-1.5 rounded-lg text-sm font-bold transition-colors ${isDark ? 'bg-slate-700 hover:bg-slate-600' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'}`}>Next</button>
           </div>
 
-          <div className="bg-gradient-to-br from-cyan-900/40 to-slate-900 border border-cyan-500/30 p-4 md:p-5 rounded-2xl shadow-lg">
-            <p className="text-xs text-cyan-300 font-semibold uppercase tracking-wider mb-1">Earned (This Month)</p>
-            <h3 className="text-2xl md:text-3xl font-bold text-cyan-400">₹{monthTotalEarnings.toLocaleString()}</h3>
+          <div className={`p-4 md:p-5 rounded-2xl shadow-sm border transition-colors ${isDark ? 'bg-gradient-to-br from-cyan-900/40 to-slate-900 border-cyan-500/30' : 'bg-cyan-50 border-cyan-200'}`}>
+            <p className={`text-xs font-bold uppercase tracking-wider mb-1 ${isDark ? 'text-cyan-300' : 'text-cyan-600'}`}>Earned (This Month)</p>
+            <h3 className={`text-2xl md:text-3xl font-extrabold ${isDark ? 'text-cyan-400' : 'text-cyan-700'}`}>₹{monthTotalEarnings.toLocaleString()}</h3>
           </div>
 
-          <div className="bg-gradient-to-br from-orange-900/40 to-slate-900 border border-orange-500/30 p-4 md:p-5 rounded-2xl shadow-lg">
-            <p className="text-xs text-orange-300 font-semibold uppercase tracking-wider mb-1">Expenses (This Month)</p>
-            <h3 className="text-2xl md:text-3xl font-bold text-orange-400">₹{monthTotalExpenses.toLocaleString()}</h3>
+          <div className={`p-4 md:p-5 rounded-2xl shadow-sm border transition-colors ${isDark ? 'bg-gradient-to-br from-orange-900/40 to-slate-900 border-orange-500/30' : 'bg-orange-50 border-orange-200'}`}>
+            <p className={`text-xs font-bold uppercase tracking-wider mb-1 ${isDark ? 'text-orange-300' : 'text-orange-600'}`}>Expenses (This Month)</p>
+            <h3 className={`text-2xl md:text-3xl font-extrabold ${isDark ? 'text-orange-400' : 'text-orange-700'}`}>₹{monthTotalExpenses.toLocaleString()}</h3>
           </div>
 
-          <div className="col-span-2 xl:col-span-1 bg-gradient-to-br from-rose-900/40 to-slate-900 border border-rose-500/30 p-4 md:p-5 rounded-2xl shadow-lg">
-            <p className="text-xs text-rose-300 font-semibold uppercase tracking-wider mb-1">Total Advance</p>
-            <h3 className="text-2xl md:text-3xl font-bold text-rose-400">₹{lifetimePeshgi.toLocaleString()}</h3>
+          <div className={`col-span-2 xl:col-span-1 p-4 md:p-5 rounded-2xl shadow-sm border transition-colors ${isDark ? 'bg-gradient-to-br from-rose-900/40 to-slate-900 border-rose-500/30' : 'bg-rose-50 border-rose-200'}`}>
+            <p className={`text-xs font-bold uppercase tracking-wider mb-1 ${isDark ? 'text-rose-300' : 'text-rose-600'}`}>Total Advance</p>
+            <h3 className={`text-2xl md:text-3xl font-extrabold ${isDark ? 'text-rose-400' : 'text-rose-700'}`}>₹{calculatedPeshgi.toLocaleString()}</h3>
           </div>
         </div>
 
         {/* View Toggle */}
         <div className="md:hidden flex justify-end items-center px-1">
-          <div className="bg-slate-800 p-1 rounded-xl flex items-center gap-1 border border-slate-700 shadow-inner">
-            <button onClick={() => setViewMode("card")} className={`px-4 py-1.5 rounded-lg flex items-center gap-2 text-xs font-semibold transition-all ${isCard ? "bg-slate-600 text-white shadow-md" : "text-slate-400 hover:text-white"}`}><LayoutList size={14}/> Cards</button>
-            <button onClick={() => setViewMode("table")} className={`px-4 py-1.5 rounded-lg flex items-center gap-2 text-xs font-semibold transition-all ${!isCard ? "bg-slate-600 text-white shadow-md" : "text-slate-400 hover:text-white"}`}><Table size={14}/> Table</button>
+          <div className={`p-1 rounded-xl flex items-center gap-1 border shadow-inner ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-200'}`}>
+            <button onClick={() => setViewMode("card")} className={`px-4 py-1.5 rounded-lg flex items-center gap-2 text-xs font-bold transition-all ${isCard ? (isDark ? "bg-slate-600 text-white shadow-md" : "bg-white text-slate-800 shadow-sm") : (isDark ? "text-slate-400 hover:text-white" : "text-slate-500 hover:text-slate-800")}`}><LayoutList size={14}/> Cards</button>
+            <button onClick={() => setViewMode("table")} className={`px-4 py-1.5 rounded-lg flex items-center gap-2 text-xs font-bold transition-all ${!isCard ? (isDark ? "bg-slate-600 text-white shadow-md" : "bg-white text-slate-800 shadow-sm") : (isDark ? "text-slate-400 hover:text-white" : "text-slate-500 hover:text-slate-800")}`}><Table size={14}/> Table</button>
           </div>
         </div>
 
         {/* Table/Card View */}
-        <div className="bg-slate-800/40 backdrop-blur-md border border-slate-700/60 rounded-2xl md:rounded-3xl shadow-xl overflow-x-auto relative">
+        <div className={`backdrop-blur-md border rounded-2xl md:rounded-3xl shadow-xl overflow-x-auto relative transition-colors ${isDark ? 'bg-slate-800/40 border-slate-700/60' : 'bg-white border-slate-200'}`}>
           <table className={`w-full text-left border-collapse ${isCard ? "block md:table" : "min-w-[700px]"}`}>
-            <thead className={`${isCard ? "hidden md:table-header-group" : ""} bg-slate-800/80 text-slate-300 text-xs tracking-widest uppercase border-b border-slate-700/60`}>
+            <thead className={`${isCard ? "hidden md:table-header-group" : ""} ${tableHeaderBg} text-xs tracking-widest uppercase border-b`}>
               <tr>
-                <th className="p-4 md:px-6 font-semibold w-28 md:w-36">Date</th>
-                <th className="p-4 md:px-6 font-semibold text-emerald-400">Paye Details</th>
-                <th className="p-4 md:px-6 font-semibold text-cyan-400">Daily Earning</th>
-                <th className="p-4 md:px-6 font-semibold text-orange-400">Expenses</th>
-                {isAdmin && <th className="p-4 md:px-6 font-semibold text-center w-32">Actions</th>}
-                {!isAdmin && <th className="p-4 md:px-6 font-semibold text-blue-300 w-52">Remark / Note</th>}
+                <th className="p-4 md:px-6 font-bold w-28 md:w-36">Date</th>
+                <th className={`p-4 md:px-6 font-bold ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>Paye Details</th>
+                <th className={`p-4 md:px-6 font-bold ${isDark ? 'text-cyan-400' : 'text-cyan-600'}`}>Daily Earning</th>
+                <th className={`p-4 md:px-6 font-bold ${isDark ? 'text-orange-400' : 'text-orange-600'}`}>Expenses</th>
+                {isAdmin && <th className="p-4 md:px-6 font-bold text-center w-32">Actions</th>}
+                {!isAdmin && <th className={`p-4 md:px-6 font-bold ${isDark ? 'text-blue-300' : 'text-blue-600'} w-52`}>Remark / Note</th>}
               </tr>
             </thead>
 
-            <tbody className={`${isCard ? "block md:table-row-group md:divide-y md:divide-slate-700/50 space-y-4 md:space-y-0 p-4 md:p-0" : "divide-y divide-slate-700/50"} text-slate-200 text-sm`}>
+            <tbody className={`${isCard ? "block md:table-row-group md:divide-y space-y-4 md:space-y-0 p-4 md:p-0" : "divide-y"} ${tableBodyStyle}`}>
               {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((day) => {
                 const { entry, formattedDate } = getEntryForDate(day);
                 const payeCount = entry?.payeCount || 0;
                 const kharcha = entry?.kharcha || 0;
                 const remark = entry?.remark || "";
-                
-                // NAYA: isLeave Flag check
                 const isLeave = entry?.isLeave || false;
 
                 const activePayeRate = entry?.customRatePerPaya !== undefined ? entry.customRatePerPaya : defaultPayeRate;
-                const dailyEarning = payeCount * activePayeRate;
+                const dailyEarning = isLeave ? 0 : (payeCount * activePayeRate);
 
                 const hasEntry = payeCount > 0 || kharcha > 0 || remark !== "" || isLeave;
                 const isEditingThisRow = editingRowDate === formattedDate && isAdmin;
@@ -421,103 +439,98 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
 
                 const liveEarning = (Number(editPaye) || 0) * activePayeRate;
 
-                return (
-                  <tr key={day} className={`${isCard 
-                    ? `block md:table-row rounded-xl md:rounded-none md:bg-transparent border md:border-none transition-colors duration-200 ${hasEntry || isEditingThisRow || isEditingRemarkThisRow ? 'bg-slate-800/80 border-slate-700 shadow-md' : 'bg-slate-800/30 border-slate-700/50 hover:bg-slate-800/60'}`
-                    : `hover:bg-slate-700/30 transition-colors duration-150 ${hasEntry || isEditingThisRow ? 'bg-slate-800/40' : ''}`
-                  }`}>
+                const rowClass = isCard 
+                    ? `block md:table-row rounded-xl md:rounded-none md:bg-transparent border md:border-none transition-colors duration-200 ${hasEntry || isEditingThisRow || isEditingRemarkThisRow ? tableRowActive : tableRowNormal}`
+                    : `transition-colors duration-150 ${hasEntry || isEditingThisRow ? (isDark ? 'bg-slate-800/40 border-slate-700/50' : 'bg-slate-50 border-slate-200') : tableRowNormal}`;
 
-                    <td className={isCard ? "flex justify-between items-center md:table-cell p-3 md:px-6 md:py-4 border-b md:border-b-0 border-slate-700/50 font-medium" : "p-4 md:px-6 font-medium text-slate-300"}>
-                      {isCard && <span className="md:hidden text-xs text-slate-500 uppercase tracking-wider font-bold">Date</span>}
-                      <span className="whitespace-nowrap">{String(day).padStart(2, '0')} {monthNames[currentMonth]}</span>
+                return (
+                  <tr key={day} className={rowClass}>
+
+                    <td className={isCard ? `flex justify-between items-center md:table-cell p-3 md:px-6 md:py-4 border-b md:border-b-0 font-medium ${isDark ? 'border-slate-700/50 text-slate-300' : 'border-slate-200 text-slate-700'}` : `p-4 md:px-6 font-medium ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                      {isCard && <span className={`md:hidden text-xs uppercase tracking-wider font-bold ${textMuted}`}>Date</span>}
+                      <span className="whitespace-nowrap font-bold">{String(day).padStart(2, '0')} {monthNames[currentMonth]}</span>
                     </td>
 
-                    {/* PAYE DETAILS COLUMN */}
-                    <td className={isCard ? `${!hasEntry && !isEditingThisRow && !isEditingRemarkThisRow ? 'hidden' : 'flex'} justify-between items-center md:table-cell p-3 md:px-6 md:py-4 border-b md:border-b-0 border-slate-700/50` : "p-4 md:px-6 font-medium text-emerald-300"}>
-                      {isCard && <span className="md:hidden text-[10px] text-slate-500 uppercase font-bold tracking-widest">Paye / Status</span>}
+                    <td className={isCard ? `${!hasEntry && !isEditingThisRow && !isEditingRemarkThisRow ? 'hidden' : 'flex'} justify-between items-center md:table-cell p-3 md:px-6 md:py-4 border-b md:border-b-0 ${isDark ? 'border-slate-700/50' : 'border-slate-200'}` : "p-4 md:px-6 font-medium"}>
+                      {isCard && <span className={`md:hidden text-[10px] uppercase font-bold tracking-widest ${textMuted}`}>Paye / Status</span>}
                       
-                      {/* NAYA: Chhutti Badge */}
                       {isLeave ? (
-                        <span className="flex items-center gap-1.5 text-rose-400 font-bold bg-rose-500/10 border border-rose-500/20 px-2.5 py-1 rounded-md w-fit text-xs tracking-wider">
+                        <span className={`flex items-center gap-1.5 font-bold px-2.5 py-1 rounded-md w-fit text-xs tracking-wider border ${isDark ? 'text-rose-400 bg-rose-500/10 border-rose-500/20' : 'text-rose-600 bg-rose-100 border-rose-300'}`}>
                           <UserMinus size={14} /> LEAVE
                         </span>
                       ) : isEditingThisRow ? (
                         <div className="flex items-center gap-2 w-fit">
-                          <input type="number" autoFocus value={editPaye} onChange={(e)=>setEditPaye(e.target.value)} className={`${inputBaseStyle} w-20 text-emerald-300 font-bold placeholder:text-slate-600`} placeholder="Qty"/>
-                          <span className="text-slate-500 text-xs font-medium bg-slate-900/50 px-2 py-1.5 rounded-md border border-slate-700">@ ₹{activePayeRate}</span>
+                          <input type="number" autoFocus value={editPaye} onChange={(e)=>setEditPaye(e.target.value)} className={`${inputBaseStyle} w-20 font-bold ${isDark ? 'text-emerald-300' : 'text-emerald-700'}`} placeholder="Qty"/>
+                          <span className={`text-xs font-bold px-2 py-1.5 rounded-md border ${isDark ? 'text-slate-400 bg-slate-900/50 border-slate-700' : 'text-slate-500 bg-slate-100 border-slate-300'}`}>@ ₹{activePayeRate}</span>
                         </div>
                       ) : (
-                        <span className={payeCount > 0 ? "text-emerald-400 font-bold" : "text-slate-600"}>
+                        <span className={`font-bold ${payeCount > 0 ? (isDark ? "text-emerald-400" : "text-emerald-600") : textMuted}`}>
                           {payeCount > 0 ? (
                             <>
                               {payeCount} 
-                              {isAdmin && <span className="text-slate-500 text-xs ml-1 font-normal" title="Rate">(@ ₹{activePayeRate})</span>}
+                              {isAdmin && <span className={`text-xs ml-1 font-medium ${textMuted}`} title="Rate">(@ ₹{activePayeRate})</span>}
                             </>
                           ) : '-'}
                         </span>
                       )}
                     </td>
 
-                    {/* DAILY EARNING COLUMN */}
-                    <td className={isCard ? `${!hasEntry && !isEditingThisRow && !isEditingRemarkThisRow ? 'hidden' : 'flex'} justify-between items-center md:table-cell p-3 md:px-6 md:py-4 border-b md:border-b-0 border-slate-700/50` : "p-4 md:px-6 font-medium text-cyan-300"}>
-                      {isCard && <span className="md:hidden text-[10px] text-slate-500 uppercase font-bold tracking-widest">Earned</span>}
+                    <td className={isCard ? `${!hasEntry && !isEditingThisRow && !isEditingRemarkThisRow ? 'hidden' : 'flex'} justify-between items-center md:table-cell p-3 md:px-6 md:py-4 border-b md:border-b-0 ${isDark ? 'border-slate-700/50' : 'border-slate-200'}` : "p-4 md:px-6 font-medium"}>
+                      {isCard && <span className={`md:hidden text-[10px] uppercase font-bold tracking-widest ${textMuted}`}>Earned</span>}
                       {isLeave ? (
-                        <span className="text-slate-600">-</span>
+                        <span className={textMuted}>-</span>
                       ) : isEditingThisRow ? (
-                        <span className="text-cyan-400 font-bold px-2 bg-cyan-900/20 py-1 rounded-md border border-cyan-500/20">₹{liveEarning.toFixed(0)}</span>
+                        <span className={`font-bold px-2 py-1 rounded-md border ${isDark ? 'text-cyan-400 bg-cyan-900/20 border-cyan-500/20' : 'text-cyan-700 bg-cyan-50 border-cyan-200'}`}>₹{liveEarning.toFixed(0)}</span>
                       ) : (
-                        <span className={dailyEarning > 0 ? "text-cyan-400 font-bold" : "text-slate-600"}>{dailyEarning > 0 ? `₹${dailyEarning.toFixed(0)}` : '-'}</span>
+                        <span className={`font-bold ${dailyEarning > 0 ? (isDark ? "text-cyan-400" : "text-cyan-600") : textMuted}`}>{dailyEarning > 0 ? `₹${dailyEarning.toFixed(0)}` : '-'}</span>
                       )}
                     </td>
 
-                    {/* EXPENSES COLUMN */}
-                    <td className={isCard ? `${!hasEntry && !isEditingThisRow && !isEditingRemarkThisRow ? 'hidden' : 'flex'} justify-between items-center md:table-cell p-3 md:px-6 md:py-4 border-b md:border-b-0 border-slate-700/50` : "p-4 md:px-6 font-medium text-orange-300"}>
-                      {isCard && <span className="md:hidden text-[10px] text-slate-500 uppercase font-bold tracking-widest">Expenses</span>}
+                    <td className={isCard ? `${!hasEntry && !isEditingThisRow && !isEditingRemarkThisRow ? 'hidden' : 'flex'} justify-between items-center md:table-cell p-3 md:px-6 md:py-4 border-b md:border-b-0 ${isDark ? 'border-slate-700/50' : 'border-slate-200'}` : "p-4 md:px-6 font-medium"}>
+                      {isCard && <span className={`md:hidden text-[10px] uppercase font-bold tracking-widest ${textMuted}`}>Expenses</span>}
                       {isEditingThisRow ? (
                         <div className="flex items-center gap-2 w-fit relative">
-                          <span className="absolute left-2.5 text-slate-500 text-sm font-bold">₹</span>
-                          <input type="number" value={editKharcha} onChange={(e)=>setEditKharcha(e.target.value)} className={`${inputBaseStyle} w-24 pl-6 text-orange-400 font-bold placeholder:text-slate-600`} placeholder="0"/>
+                          <span className={`absolute left-2.5 text-sm font-bold ${textMuted}`}>₹</span>
+                          <input type="number" value={editKharcha} onChange={(e)=>setEditKharcha(e.target.value)} className={`${inputBaseStyle} w-24 pl-6 font-bold ${isDark ? 'text-orange-400' : 'text-orange-600'}`} placeholder="0"/>
                         </div>
                       ) : (
-                        <span className={kharcha > 0 ? "text-orange-400 font-bold" : "text-slate-600"}>{kharcha > 0 ? `₹${kharcha}` : '-'}</span>
+                        <span className={`font-bold ${kharcha > 0 ? (isDark ? "text-orange-400" : "text-orange-600") : textMuted}`}>{kharcha > 0 ? `₹${kharcha}` : '-'}</span>
                       )}
                     </td>
                     
-                    {/* ACTIONS COLUMN (ADMIN ONLY) */}
                     {isAdmin && (
-                      <td className={`p-3 md:px-6 md:py-4 align-middle text-center ${isCard ? 'flex justify-between items-center md:table-cell border-t border-slate-700/30 mt-2' : ''}`}>
-                        {isCard && <span className="md:hidden text-[10px] text-blue-400/70 uppercase font-bold tracking-widest">Actions</span>}
+                      <td className={`p-3 md:px-6 md:py-4 align-middle text-center ${isCard ? `flex justify-between items-center md:table-cell border-t mt-2 ${isDark ? 'border-slate-700/30' : 'border-slate-200'}` : ''}`}>
+                        {isCard && <span className={`md:hidden text-[10px] uppercase font-bold tracking-widest ${isDark ? 'text-blue-400/70' : 'text-blue-500'}`}>Actions</span>}
                         <div className="flex items-center justify-end md:justify-center gap-1.5 relative">
                           
                           {isEditingThisRow ? (
-                            <div className="flex items-center gap-1.5 bg-slate-800 p-1.5 rounded-xl shadow-lg border border-slate-600">
-                              <button onClick={()=>setEditingRowDate(null)} className="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-700 rounded-lg transition-colors"><X size={16}/></button>
+                            <div className={`flex items-center gap-1.5 p-1.5 rounded-xl shadow-lg border ${isDark ? 'bg-slate-800 border-slate-600' : 'bg-white border-slate-300'}`}>
+                              <button onClick={()=>setEditingRowDate(null)} className={`p-1.5 rounded-lg transition-colors ${isDark ? 'text-slate-400 hover:text-slate-200 hover:bg-slate-700' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100'}`}><X size={16}/></button>
                               <button onClick={()=>handleSaveRowData(formattedDate)} className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg shadow-sm transition-colors flex items-center gap-1"><Check size={14}/> Save</button>
                             </div>
                           ) : (
                             <button 
                               onClick={() => { setEditingRowDate(formattedDate); setEditPaye(payeCount ? payeCount.toString() : ""); setEditKharcha(kharcha ? kharcha.toString() : ""); }}
-                              className={`flex items-center justify-center w-8 h-8 rounded-lg transition-all border ${hasEntry && !isLeave ? 'border-slate-600 bg-slate-700/50 hover:bg-slate-600 text-slate-300' : 'border-dashed border-slate-600/50 text-slate-500 hover:text-slate-300 hover:bg-slate-700/30'}`}
+                              className={`flex items-center justify-center w-8 h-8 rounded-lg transition-all border ${hasEntry && !isLeave ? (isDark ? 'border-slate-600 bg-slate-700/50 hover:bg-slate-600 text-slate-300' : 'border-slate-300 bg-white hover:bg-slate-50 text-slate-600 shadow-sm') : (isDark ? 'border-dashed border-slate-600/50 text-slate-500 hover:text-slate-300 hover:bg-slate-700/30' : 'border-dashed border-slate-300 text-slate-400 hover:text-slate-600 hover:bg-slate-50')}`}
                             >
                               {hasEntry && !isLeave ? <Edit3 size={15}/> : <PlusCircle size={15} />}
                             </button>
                           )}
 
                           {isEditingRemarkThisRow ? (
-                            <form onSubmit={(e) => { e.preventDefault(); handleSaveRemark(formattedDate); }} className="flex items-center gap-1.5 absolute right-full mr-2 md:right-12 bg-slate-800 p-1.5 rounded-xl border border-blue-500/40 shadow-xl z-20 w-[180px]">
-                              <input type="text" autoFocus value={editingRemark.text} onChange={(e) => setEditingRemark({ ...editingRemark, text: e.target.value })} className="flex-1 bg-slate-900 border border-slate-700 rounded-md px-2 py-1.5 text-xs text-blue-200 outline-none focus:border-blue-500" placeholder="Type note..."/>
+                            <form onSubmit={(e) => { e.preventDefault(); handleSaveRemark(formattedDate); }} className={`flex items-center gap-1.5 absolute right-full mr-2 md:right-12 p-1.5 rounded-xl border shadow-xl z-20 w-[180px] ${isDark ? 'bg-slate-800 border-blue-500/40' : 'bg-white border-blue-200'}`}>
+                              <input type="text" autoFocus value={editingRemark.text} onChange={(e) => setEditingRemark({ ...editingRemark, text: e.target.value })} className={`flex-1 rounded-md px-2 py-1.5 text-xs outline-none border ${isDark ? 'bg-slate-900 border-slate-700 focus:border-blue-500 text-blue-200' : 'bg-slate-50 border-slate-300 focus:border-blue-400 text-blue-800'}`} placeholder="Type note..."/>
                               <button type="submit" className="p-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-md transition-colors"><Check size={14} /></button>
                             </form>
                           ) : (!isEditingThisRow && (
                             <>
-                              <button onClick={() => setEditingRemark({ date: formattedDate, text: remark })} className={`flex items-center justify-center w-8 h-8 rounded-lg transition-all border ${remark ? 'border-blue-500/50 bg-blue-500/10 text-blue-400' : 'border-transparent text-slate-500 hover:bg-slate-700/50 hover:text-slate-300'}`}>
+                              <button onClick={() => setEditingRemark({ date: formattedDate, text: remark })} className={`flex items-center justify-center w-8 h-8 rounded-lg transition-all border ${remark ? (isDark ? 'border-blue-500/50 bg-blue-500/10 text-blue-400' : 'border-blue-300 bg-blue-50 text-blue-600') : (isDark ? 'border-transparent text-slate-500 hover:bg-slate-700/50 hover:text-slate-300' : 'border-transparent text-slate-400 hover:bg-slate-100 hover:text-slate-600')}`}>
                                 {remark ? <MessageSquareText size={16} /> : <MessageSquare size={16} />}
                               </button>
                               
-                              {/* NAYA: Chhutti Toggle Button for Admin only */}
                               <button 
                                 onClick={() => handleToggleLeave(formattedDate)} 
-                                className={`flex items-center justify-center w-8 h-8 rounded-lg transition-all border ${isLeave ? 'border-rose-500/50 bg-rose-500/10 text-rose-400' : 'border-transparent text-slate-500 hover:bg-slate-700/50 hover:text-rose-400'}`}
+                                className={`flex items-center justify-center w-8 h-8 rounded-lg transition-all border ${isLeave ? (isDark ? 'border-rose-500/50 bg-rose-500/10 text-rose-400' : 'border-rose-300 bg-rose-50 text-rose-600') : (isDark ? 'border-transparent text-slate-500 hover:bg-slate-700/50 hover:text-rose-400' : 'border-transparent text-slate-400 hover:bg-slate-100 hover:text-rose-500')}`}
                                 title={isLeave ? "Remove Leave" : "Mark Leave"}
                               >
                                 <UserMinus size={16} />
@@ -528,20 +541,19 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
                       </td>
                     )}
 
-                    {/* REMARK COLUMN (NON-ADMIN/USER ONLY) */}
                     {!isAdmin && (
-                      <td className={isCard ? `flex justify-between items-center md:table-cell p-3 md:px-6 md:py-4 border-b md:border-b-0 border-slate-700/50` : "p-4 md:px-6 font-medium text-blue-300"}>
-                        {isCard && <span className="md:hidden text-[10px] text-slate-500 uppercase font-bold tracking-widest">Remark</span>}
+                      <td className={isCard ? `flex justify-between items-center md:table-cell p-3 md:px-6 md:py-4 border-b md:border-b-0 ${isDark ? 'border-slate-700/50' : 'border-slate-200'}` : "p-4 md:px-6 font-medium"}>
+                        {isCard && <span className={`md:hidden text-[10px] uppercase font-bold tracking-widest ${textMuted}`}>Remark</span>}
                         
                         {isEditingRemarkThisRow ? (
                           <form onSubmit={(e) => { e.preventDefault(); handleSaveRemark(formattedDate); }} className="flex items-center gap-1.5 w-full max-w-[220px]">
-                            <input type="text" autoFocus value={editingRemark.text} onChange={(e) => setEditingRemark({ ...editingRemark, text: e.target.value })} className="flex-1 bg-slate-900 border border-slate-700 rounded-md px-2 py-1.5 text-xs text-blue-200 outline-none focus:border-blue-500" placeholder="Apna note likhein..."/>
+                            <input type="text" autoFocus value={editingRemark.text} onChange={(e) => setEditingRemark({ ...editingRemark, text: e.target.value })} className={`flex-1 rounded-md px-2 py-1.5 text-xs outline-none border ${isDark ? 'bg-slate-900 border-slate-700 focus:border-blue-500 text-blue-200' : 'bg-white border-slate-300 focus:border-blue-400 text-blue-800'}`} placeholder="Apna note likhein..."/>
                             <button type="submit" className="p-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-md transition-colors"><Check size={14} /></button>
                           </form>
                         ) : (
                           <div className={`flex items-center ${isCard ? 'justify-end' : ''} gap-3`}>
-                            <span className="text-slate-300 text-sm whitespace-pre-wrap">{remark ? remark : <span className="text-slate-600 italic">No remark</span>}</span>
-                            <button onClick={() => setEditingRemark({ date: formattedDate, text: remark })} className={`p-1.5 rounded-md transition border flex shrink-0 ${remark ? 'bg-blue-500/10 border-blue-500/20 text-blue-400 hover:bg-blue-500/20' : 'border-dashed border-slate-600/50 text-slate-500 hover:text-slate-300 hover:bg-slate-700/30'}`} title="Add/Edit Remark">
+                            <span className={`text-sm font-medium whitespace-pre-wrap ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>{remark ? remark : <span className={`italic ${textMuted}`}>No remark</span>}</span>
+                            <button onClick={() => setEditingRemark({ date: formattedDate, text: remark })} className={`p-1.5 rounded-md transition border flex shrink-0 ${remark ? (isDark ? 'bg-blue-500/10 border-blue-500/20 text-blue-400 hover:bg-blue-500/20' : 'bg-blue-50 border-blue-200 text-blue-600 hover:bg-blue-100') : (isDark ? 'border-dashed border-slate-600/50 text-slate-500 hover:text-slate-300 hover:bg-slate-700/30' : 'border-dashed border-slate-300 text-slate-400 hover:text-slate-600 hover:bg-slate-50')}`} title="Add/Edit Remark">
                               {remark ? <Edit3 size={14} /> : <MessageSquare size={14} />}
                             </button>
                           </div>
@@ -554,12 +566,12 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
               })}
             </tbody>
 
-            <tfoot className={`${isCard ? "hidden md:table-footer-group" : ""} bg-slate-800 border-t-2 border-slate-600/50 text-sm`}>
+            <tfoot className={`${isCard ? "hidden md:table-footer-group" : ""} border-t-2 text-sm ${tfootBg}`}>
               <tr>
-                <td className="p-4 md:px-6 font-bold text-slate-300 uppercase tracking-widest text-xs">Monthly Total</td>
-                <td className="p-4 md:px-6 font-bold text-emerald-400 text-lg">{monthTotalPaye} <span className="text-sm font-normal text-slate-400 ml-1">Paye</span></td>
-                <td className="p-4 md:px-6 font-bold text-cyan-400 text-lg">₹{monthTotalEarnings.toFixed(0)}</td>
-                <td className="p-4 md:px-6 font-bold text-orange-400 text-lg">₹{monthTotalExpenses.toLocaleString()}</td>
+                <td className={`p-4 md:px-6 font-extrabold uppercase tracking-widest text-xs ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Monthly Total</td>
+                <td className={`p-4 md:px-6 font-extrabold text-lg ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>{monthTotalPaye} <span className={`text-sm font-medium ml-1 ${textMuted}`}>Paye</span></td>
+                <td className={`p-4 md:px-6 font-extrabold text-lg ${isDark ? 'text-cyan-400' : 'text-cyan-600'}`}>₹{monthTotalEarnings.toFixed(0)}</td>
+                <td className={`p-4 md:px-6 font-extrabold text-lg ${isDark ? 'text-orange-400' : 'text-orange-600'}`}>₹{monthTotalExpenses.toLocaleString()}</td>
                 {isAdmin && <td className="p-4"></td>}
                 {!isAdmin && <td className="p-4"></td>}
               </tr>
