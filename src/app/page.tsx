@@ -4,8 +4,8 @@ import { useRouter } from "next/navigation";
 import { getLabourData, saveLabourData, fetchFromFirebase } from "../lib/storage";
 import { User, Lock, LogIn, UserPlus, Phone, AlertCircle, CheckCircle, ArrowRight, Building2, Users, Receipt, ShieldCheck, Zap, X, Sun, Moon, Mail } from "lucide-react";
 
-// Firebase Auth Imports
-import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword } from "firebase/auth";
+// NAYA: Added GoogleAuthProvider and signInWithPopup
+import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 
 // Google Icon SVG
 const GoogleIcon = () => (
@@ -64,7 +64,7 @@ export default function HomeAuthPage() {
     setTimeout(() => setAuthMode("hidden"), 500); 
   };
 
-  // 🟢 100% SECURE FIREBASE LOGIN (No Hardcoded Passwords)
+  // 🟢 100% FIREBASE LOGIN (FOR BOTH ADMIN AND LABOUR)
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!id || !password) return showToast("ID and Password are required!", "error");
@@ -73,7 +73,6 @@ export default function HomeAuthPage() {
     setLoadingText("Verifying Account...");
 
     try {
-      // 1. Fetch Latest Cloud Data
       const cloudAdmins = await fetchFromFirebase("bhatta_admins");
       if (cloudAdmins) localStorage.setItem("bhatta_admins", JSON.stringify(cloudAdmins));
       
@@ -83,55 +82,83 @@ export default function HomeAuthPage() {
       const cloudBhatta = await fetchFromFirebase("bhattas_list");
       if (cloudBhatta) localStorage.setItem("bhattas_list", JSON.stringify(cloudBhatta));
 
-      // 2. Format Login ID
       const inputId = id.toLowerCase().trim();
       let loginEmail = inputId;
       if (!loginEmail.includes("@")) {
-        loginEmail = `${loginEmail}@bhattapro.com`; // Invisible email system
+        loginEmail = `${loginEmail}@bhattapro.com`; 
       }
 
-      // 3. FIREBASE AUTHENTICATION (The Ultimate Security Check)
       const auth = getAuth();
+      let firebaseSuccess = false;
+
       try {
+        // 🔥 STRICT FIREBASE AUTHENTICATION (Master Admin checks happen here too!)
         await signInWithEmailAndPassword(auth, loginEmail, password);
+        firebaseSuccess = true;
       } catch (authError: any) {
-        if (authError.code === 'auth/invalid-credential' || authError.code === 'auth/user-not-found' || authError.code === 'auth/wrong-password') {
-          showToast("Access Denied! Incorrect ID or Password.", "error");
+        // 🚀 AUTO-SYNC FOR CSV IMPORTED LABOURERS (ONLY)
+        const labourers = getLabourData("bhatta_labourers") || [];
+        const rawId = id.trim();
+        const labour = labourers.find((l: any) => l.loginId === rawId || l.phone === rawId);
+
+        // Naya imported labour bina password wala
+        if (labour && !labour.password) {
+          setLoadingText("Securing Imported Account...");
+          try {
+            await createUserWithEmailAndPassword(auth, loginEmail, password);
+            labour.password = password;
+            saveLabourData("bhatta_labourers", labourers); 
+
+            localStorage.setItem("bhatta_session", `user_${labour.id}`);
+            setLoadingText("Account Ready!");
+            showToast("First Login: Account Password Secured!", "success");
+            setTimeout(() => router.push(`/labour/${labour.id}`), 1000);
+            return;
+          } catch (createErr: any) {
+            console.error("Auto-sync failed:", createErr);
+            showToast("Could not secure imported account.", "error");
+            setIsAuthenticating(false);
+            return;
+          }
         } else {
-          showToast("Network Error. Please try again.", "error");
+          showToast("Access Denied! Incorrect ID or Password.", "error");
+          setIsAuthenticating(false);
+          return;
         }
-        setIsAuthenticating(false);
-        return;
       }
 
-      // 4. Admin Check (After successful Firebase Auth)
-      const savedAdmins = JSON.parse(localStorage.getItem("bhatta_admins") || "[]");
-      const masterAdmins = ["nadeemxsalar@gmail.com", "realheronadeem@gmail.com"];
-      const dynamicAdmins = savedAdmins.map((a: string) => a.includes("@") ? a.toLowerCase() : `${a.toLowerCase()}@bhattapro.com`); 
-      
-      const allAdmins = [...masterAdmins, ...dynamicAdmins];
+      // 4. IF FIREBASE LOGIN WAS SUCCESSFUL
+      if (firebaseSuccess) {
+        // Admin Verify
+        const savedAdmins = JSON.parse(localStorage.getItem("bhatta_admins") || "[]");
+        const masterAdmins = ["nadeemxsalar@gmail.com", "realheronadeem@gmail.com"];
+        const dynamicAdmins = savedAdmins.map((a: string) => a.includes("@") ? a.toLowerCase() : `${a.toLowerCase()}@bhattapro.com`); 
+        
+        const allAdmins = [...masterAdmins, ...dynamicAdmins];
 
-      if (allAdmins.includes(loginEmail)) {
-        localStorage.setItem("bhatta_session", "admin");
-        setLoadingText("Loading Workspace...");
-        showToast("Welcome Back, Master Admin!", "success");
-        setTimeout(() => router.push("/admin"), 1000);
-        return;
-      }
+        // Is it an Admin?
+        if (allAdmins.includes(loginEmail)) {
+          localStorage.setItem("bhatta_session", "admin");
+          setLoadingText("Loading Workspace...");
+          showToast("Welcome Back, Master Admin!", "success");
+          setTimeout(() => router.push("/admin"), 1000);
+          return;
+        }
 
-      // 5. Labour Check
-      const labourers = getLabourData("bhatta_labourers") || [];
-      const rawId = id.trim();
-      const labour = labourers.find((l: any) => l.loginId === rawId || l.phone === rawId);
+        // Is it a Labourer?
+        const labourers = getLabourData("bhatta_labourers") || [];
+        const rawId = id.trim();
+        const labour = labourers.find((l: any) => l.loginId === rawId || l.phone === rawId);
 
-      if (labour) {
-        localStorage.setItem("bhatta_session", `user_${labour.id}`);
-        setLoadingText("Loading Your Ledger...");
-        showToast("Login Successful!", "success");
-        setTimeout(() => router.push(`/labour/${labour.id}`), 1000);
-      } else {
-        showToast("Authentication successful, but profile missing.", "error");
-        setIsAuthenticating(false);
+        if (labour) {
+          localStorage.setItem("bhatta_session", `user_${labour.id}`);
+          setLoadingText("Loading Your Ledger...");
+          showToast("Login Successful!", "success");
+          setTimeout(() => router.push(`/labour/${labour.id}`), 1000);
+        } else {
+          showToast("Authentication successful, but profile missing.", "error");
+          setIsAuthenticating(false);
+        }
       }
 
     } catch (error) {
@@ -141,7 +168,7 @@ export default function HomeAuthPage() {
     }
   };
 
-  // 🟢 FIREBASE SIGNUP SYSTEM (Only for Labourers)
+  // 🟢 STANDARD SIGNUP
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || !password) return showToast("All details are required!", "error");
@@ -154,7 +181,6 @@ export default function HomeAuthPage() {
       if (cloudLab) localStorage.setItem("bhatta_labourers", JSON.stringify(cloudLab));
 
       const labourers = getLabourData("bhatta_labourers") || [];
-      
       if (contact && labourers.some((l: any) => l.phone === contact)) {
         setIsAuthenticating(false);
         return showToast("This Phone/Email is already registered!", "error");
@@ -167,16 +193,12 @@ export default function HomeAuthPage() {
       });
       const newLoginId = (maxId + 1).toString();
 
-      // Firebase Invisible Email Registration
       const signupEmail = `${newLoginId}@bhattapro.com`;
       const auth = getAuth();
-
-      // 1. Create User in Firebase Authentication
       await createUserWithEmailAndPassword(auth, signupEmail, password);
 
-      // 2. Save User Data to Local/Cloud Database
       const newLabour: any = {
-        id: Date.now().toString(), bhattaId: "bhatta_default", name, loginId: newLoginId, phone: contact, ratePerThousand: 0, ratePerPaya: 0, paya: "-", totalBricks: 0, totalPaye: 0, totalKharcha: 0, totalPeshgi: 0, entries: []
+        id: Date.now().toString(), bhattaId: "bhatta_default", name, loginId: newLoginId, password, phone: contact, ratePerThousand: 0, ratePerPaya: 0, paya: "-", totalBricks: 0, totalPaye: 0, totalKharcha: 0, totalPeshgi: 0, entries: []
       };
 
       const updatedList = [...labourers, newLabour];
@@ -185,7 +207,6 @@ export default function HomeAuthPage() {
       localStorage.setItem("bhatta_session", `user_${newLabour.id}`);
       setLoadingText("Account Ready!");
       showToast(`Account Created! Your Login ID is: ${newLoginId}`, "success");
-      
       setTimeout(() => router.push(`/labour/${newLabour.id}`), 2500);
 
     } catch (error: any) {
@@ -201,8 +222,79 @@ export default function HomeAuthPage() {
     }
   };
 
-  const handleGoogleAuth = () => {
-    showToast("Google Authentication system coming soon!", "success");
+  // 🟢 1-CLICK GOOGLE SIGN IN (For Both Admin and Labour)
+  const handleGoogleAuth = async () => {
+    setIsAuthenticating(true);
+    setLoadingText("Connecting to Google...");
+    
+    try {
+      const auth = getAuth();
+      const provider = new GoogleAuthProvider();
+      const result = await signInWithPopup(auth, provider);
+      
+      const user = result.user;
+      const googleEmail = user.email?.toLowerCase() || "";
+      const googleName = user.displayName || "Google User";
+
+      // Fetch Latest Data
+      const cloudAdmins = await fetchFromFirebase("bhatta_admins");
+      if (cloudAdmins) localStorage.setItem("bhatta_admins", JSON.stringify(cloudAdmins));
+      
+      const cloudLab = await fetchFromFirebase("bhatta_labourers");
+      if (cloudLab) localStorage.setItem("bhatta_labourers", JSON.stringify(cloudLab));
+
+      // 1. ADMIN CHECK
+      const savedAdmins = JSON.parse(localStorage.getItem("bhatta_admins") || "[]");
+      const masterAdmins = ["nadeemxsalar@gmail.com", "realheronadeem@gmail.com"];
+      const dynamicAdmins = savedAdmins.map((a: string) => a.toLowerCase()); 
+      const allAdmins = [...masterAdmins, ...dynamicAdmins];
+
+      if (allAdmins.includes(googleEmail)) {
+        localStorage.setItem("bhatta_session", "admin");
+        setLoadingText("Loading Workspace...");
+        showToast("Welcome Back, Master Admin!", "success");
+        setTimeout(() => router.push("/admin"), 1000);
+        return;
+      }
+
+      // 2. LABOURER CHECK OR AUTO-SIGNUP
+      const labourers = getLabourData("bhatta_labourers") || [];
+      const labour = labourers.find((l: any) => l.phone?.toLowerCase() === googleEmail || l.loginId === googleEmail);
+
+      if (labour) {
+        localStorage.setItem("bhatta_session", `user_${labour.id}`);
+        setLoadingText("Loading Your Ledger...");
+        showToast("Login Successful!", "success");
+        setTimeout(() => router.push(`/labour/${labour.id}`), 1000);
+      } else {
+        setLoadingText("Creating Google Profile...");
+        let maxId = 1000;
+        labourers.forEach((l: any) => {
+          const num = parseInt(l.loginId, 10);
+          if (!isNaN(num) && num > maxId) maxId = num;
+        });
+        const newLoginId = (maxId + 1).toString();
+
+        const newLabour: any = {
+          id: Date.now().toString(), bhattaId: "bhatta_default", name: googleName, loginId: newLoginId, password: "", phone: googleEmail, ratePerThousand: 0, ratePerPaya: 0, paya: "-", totalBricks: 0, totalPaye: 0, totalKharcha: 0, totalPeshgi: 0, entries: []
+        };
+
+        const updatedList = [...labourers, newLabour];
+        saveLabourData("bhatta_labourers", updatedList); 
+        
+        localStorage.setItem("bhatta_session", `user_${newLabour.id}`);
+        setLoadingText("Account Ready!");
+        showToast(`Welcome ${googleName}! Your ID is ${newLoginId}`, "success");
+        setTimeout(() => router.push(`/labour/${newLabour.id}`), 2500);
+      }
+
+    } catch (error: any) {
+      console.error("Google Auth Error:", error);
+      if (error.code !== 'auth/popup-closed-by-user') {
+        showToast("Google Sign-In failed. Please try again.", "error");
+      }
+      setIsAuthenticating(false);
+    }
   };
 
   const isDark = theme === "dark";
@@ -398,7 +490,7 @@ export default function HomeAuthPage() {
                       type="button" 
                       onClick={handleGoogleAuth}
                       disabled={isAuthenticating}
-                      className="relative flex items-center justify-center w-16 h-16 bg-white rounded-full shadow-lg hover:shadow-2xl transition-all hover:scale-110 active:scale-95 group disabled:opacity-50 disabled:hover:scale-100"
+                      className="relative flex items-center justify-center w-16 h-16 bg-white rounded-full shadow-lg hover:shadow-2xl transition-all hover:scale-110 active:scale-95 group disabled:opacity-50 disabled:hover:scale-100 cursor-pointer"
                       title="Sign in with Google"
                     >
                       <div className="absolute inset-0 rounded-full animate-ping opacity-25 bg-blue-500"></div>
