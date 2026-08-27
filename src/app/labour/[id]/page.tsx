@@ -1,9 +1,9 @@
 "use client";
 import { useEffect, useState, use } from "react";
 import { useRouter } from "next/navigation";
-import { getLabourData, saveLabourData } from "../../../lib/storage";
+import { getLabourData, saveLabourData, fetchFromFirebase } from "../../../lib/storage";
 import { Labour } from "../../../types";
-import { IndianRupee, ArrowLeft, Layers, MessageSquare, MessageSquareText, Check, LayoutList, Table, Edit3, X, PlusCircle, LogOut, Calculator, Download, UserMinus, Sun, Moon } from "lucide-react";
+import { IndianRupee, ArrowLeft, Layers, MessageSquare, MessageSquareText, Check, LayoutList, Table, Edit3, X, PlusCircle, LogOut, Calculator, Download, UserMinus, Sun, Moon, Loader2 } from "lucide-react";
 import Link from "next/link";
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -12,14 +12,16 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
   const router = useRouter();
   const { id } = use(params); 
   const [labour, setLabour] = useState<Labour | null>(null);
+  
+  // Independent Month/Year State
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
 
   const [isAdmin, setIsAdmin] = useState(false);
   const [isAuthorized, setIsAuthorized] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   
-  // Theme State
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const [theme, setTheme] = useState<"dark" | "light">("light");
 
   const [editingRemark, setEditingRemark] = useState<{ date: string; text: string } | null>(null);
   const [editingRowDate, setEditingRowDate] = useState<string | null>(null);
@@ -30,26 +32,52 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
   const [includePeshgi, setIncludePeshgi] = useState(true);
 
   useEffect(() => {
-    const session = localStorage.getItem("bhatta_session");
+    const initApp = async () => {
+      const session = localStorage.getItem("bhatta_session");
 
-    if (session === "admin") {
-      setIsAdmin(true);
-      setIsAuthorized(true);
-    } else if (session === `user_${id}`) {
-      setIsAdmin(false); 
-      setIsAuthorized(true);
-    } else {
-      router.push("/");
-      return;
-    }
+      if (session === "admin") {
+        setIsAdmin(true);
+        setIsAuthorized(true);
+      } else if (session === `user_${id}`) {
+        setIsAdmin(false); 
+        setIsAuthorized(true);
+      } else {
+        router.push("/");
+        return;
+      }
 
-    // Load saved theme
-    const savedTheme = localStorage.getItem("app_theme") as "dark" | "light";
-    if (savedTheme) setTheme(savedTheme);
+      const savedTheme = localStorage.getItem("app_theme") as "dark" | "light";
+      if (savedTheme) setTheme(savedTheme);
 
-    const data: Labour[] = getLabourData("bhatta_labourers") || [];
-    const foundLabour = data.find((l) => l.id === id);
-    if (foundLabour) setLabour(foundLabour);
+      try {
+        const cloudLab = await fetchFromFirebase("bhatta_labourers");
+        if (cloudLab) localStorage.setItem("bhatta_labourers", JSON.stringify(cloudLab));
+      } catch (e) {
+        console.error("Cloud fetch failed");
+      }
+
+      const data: Labour[] = getLabourData("bhatta_labourers") || [];
+      const foundLabour = data.find((l) => l.id === id);
+      
+      if (foundLabour) {
+        setLabour(foundLabour);
+        const safeEntries = Array.isArray(foundLabour.entries) ? foundLabour.entries : [];
+        const validEntries = safeEntries.filter(e => e.payeCount > 0 || e.kharcha > 0 || e.peshgi !== 0 || e.remark || e.isLeave);
+        
+        if (validEntries.length > 0) {
+          validEntries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+          const latestDate = new Date(validEntries[0].date);
+          setCurrentMonth(latestDate.getMonth());
+          setCurrentYear(latestDate.getFullYear());
+        } else {
+          const now = new Date();
+          setCurrentMonth(now.getMonth());
+          setCurrentYear(now.getFullYear());
+        }
+      }
+      setIsLoading(false);
+    };
+    initApp();
   }, [id, router]);
 
   const toggleTheme = () => {
@@ -63,14 +91,60 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
     router.push("/");
   };
 
-  if (!isAuthorized || !labour) return <div className="min-h-screen flex items-center justify-center text-slate-400 bg-[#0f172a] font-sans">Loading Data...</div>;
+  if (!isAuthorized || isLoading || !labour) {
+    const isDark = theme === "dark";
+    return (
+      <div className={`min-h-screen flex flex-col items-center justify-center transition-colors duration-500 ${isDark ? 'bg-[#0f172a]' : 'bg-slate-50'}`}>
+        <Loader2 className="w-12 h-12 text-blue-500 animate-spin mb-4" />
+        <h2 className={`text-xl font-bold tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>Loading Data...</h2>
+        <p className={`text-sm mt-2 font-medium ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Please wait while we fetch the records.</p>
+      </div>
+    );
+  }
+
+  const safeEntries = Array.isArray(labour.entries) ? labour.entries : [];
+  const validEntries = safeEntries.filter(e => e.payeCount > 0 || e.kharcha > 0 || e.peshgi !== 0 || e.remark || e.isLeave);
+  
+  const oldestDate = validEntries.length > 0 
+    ? new Date(Math.min(...validEntries.map(e => new Date(e.date).getTime()))) 
+    : new Date();
+
+  // Navigation Logic
+  const canGoPrev = new Date(currentYear, currentMonth, 1) > new Date(oldestDate.getFullYear(), oldestDate.getMonth(), 1);
+
+  const handlePrevMonth = () => {
+    if (!canGoPrev) return;
+    let tempMonth = currentMonth;
+    let tempYear = currentYear;
+    
+    // Find the closest previous month with data (max lookback 60 months)
+    for (let i = 0; i < 60; i++) { 
+      if (tempMonth === 0) { tempMonth = 11; tempYear--; } 
+      else { tempMonth--; }
+      
+      const hasData = validEntries.some(e => {
+        const d = new Date(e.date);
+        return d.getMonth() === tempMonth && d.getFullYear() === tempYear;
+      });
+
+      if (hasData) {
+        setCurrentMonth(tempMonth);
+        setCurrentYear(tempYear);
+        return;
+      }
+    }
+  };
+
+  const handleNextMonth = () => {
+    if (currentMonth === 11) { setCurrentMonth(0); setCurrentYear(currentYear + 1); } 
+    else { setCurrentMonth(currentMonth + 1); }
+  };
 
   const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
   const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
   const getEntryForDate = (day: number) => {
     const formattedDate = `${currentYear}-${String(currentMonth + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-    const safeEntries = Array.isArray(labour.entries) ? labour.entries : [];
     return { entry: safeEntries.find((e) => e.date === formattedDate), formattedDate };
   };
 
@@ -170,8 +244,6 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
   let calculatedEarned = 0;
   let calculatedKharcha = 0;
   let calculatedPeshgi = 0;
-
-  const safeEntries = Array.isArray(labour.entries) ? labour.entries : [];
   
   safeEntries.forEach(e => {
     const activeRate = e.customRatePerPaya !== undefined ? e.customRatePerPaya : defaultPayeRate;
@@ -179,7 +251,8 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
       calculatedEarned += (e.payeCount || 0) * activeRate;
     }
     calculatedKharcha += Number(e.kharcha || 0);
-    calculatedPeshgi += Number(e.peshgi || 0);
+    // FIXED TS ERROR HERE WITH `(e as any).advance`
+    calculatedPeshgi += Number(e.peshgi !== undefined ? e.peshgi : ((e as any).advance || 0));
   });
 
   const deductions = calculatedKharcha + (includePeshgi ? calculatedPeshgi : 0);
@@ -260,7 +333,6 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
 
   const isCard = viewMode === "card";
 
-  // Dynamic Theme Classes
   const isDark = theme === "dark";
   const bgMain = isDark ? "bg-[#0f172a] text-white" : "bg-slate-50 text-slate-900";
   const cardBg = isDark ? "bg-slate-800/60 border-slate-700/80" : "bg-white border-slate-200 shadow-xl";
@@ -377,11 +449,22 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
         {/* MONTH SUMMARY */}
         <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 md:gap-5">
           <div className={`col-span-2 xl:col-span-1 backdrop-blur-xl border p-4 rounded-2xl flex items-center justify-between shadow-sm transition-colors ${isDark ? 'bg-slate-800/80 border-slate-700/50' : 'bg-white border-slate-200'}`}>
-            <button onClick={() => { if(currentMonth===0){setCurrentMonth(11); setCurrentYear(p=>p-1);} else setCurrentMonth(p=>p-1); }} className={`px-3 py-1.5 rounded-lg text-sm font-bold transition-colors ${isDark ? 'bg-slate-700 hover:bg-slate-600' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'}`}>Prev</button>
+            <button 
+              onClick={handlePrevMonth} 
+              disabled={!canGoPrev}
+              className={`px-3 py-1.5 rounded-lg text-sm font-bold transition-colors ${!canGoPrev ? 'opacity-40 cursor-not-allowed text-slate-400' : (isDark ? 'bg-slate-700 hover:bg-slate-600 text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-700')}`}
+            >
+              Prev
+            </button>
             <div className="text-center">
               <h2 className={`text-lg font-bold tracking-wide ${textMain}`}>{monthNames[currentMonth]} {currentYear}</h2>
             </div>
-            <button onClick={() => { if(currentMonth===11){setCurrentMonth(0); setCurrentYear(p=>p+1);} else setCurrentMonth(p=>p+1); }} className={`px-3 py-1.5 rounded-lg text-sm font-bold transition-colors ${isDark ? 'bg-slate-700 hover:bg-slate-600' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'}`}>Next</button>
+            <button 
+              onClick={handleNextMonth} 
+              className={`px-3 py-1.5 rounded-lg text-sm font-bold transition-colors ${isDark ? 'bg-slate-700 hover:bg-slate-600 text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'}`}
+            >
+              Next
+            </button>
           </div>
 
           <div className={`p-4 md:p-5 rounded-2xl shadow-sm border transition-colors ${isDark ? 'bg-gradient-to-br from-cyan-900/40 to-slate-900 border-cyan-500/30' : 'bg-cyan-50 border-cyan-200'}`}>

@@ -2,15 +2,27 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { saveLabourData, getLabourData } from "../../lib/storage";
+import { saveLabourData, getLabourData, fetchFromFirebase } from "../../lib/storage";
 import { Labour, DailyEntry, Bhatta } from "../../types";
-import { Menu, X, FileText, LayoutDashboard, IndianRupee, Users, Building2, Layers, Wallet, Settings, Check, LogOut, CheckSquare, Search, AlertCircle, CheckCircle, TrendingDown, TrendingUp, ChevronRight, ChevronDown, History, BarChart3, Upload, FileSpreadsheet, Download, FileDown, Maximize2, Minimize2, UserMinus, ShieldAlert, Trash2, Plus, Sun, Moon, Bell, Key, LockKeyhole } from "lucide-react";
+import { Menu, X, FileText, LayoutDashboard, IndianRupee, Users, Building2, Layers, Wallet, Settings, Check, LogOut, CheckSquare, Search, AlertCircle, CheckCircle, TrendingDown, TrendingUp, ChevronRight, ChevronDown, History, BarChart3, Upload, FileSpreadsheet, Download, FileDown, Maximize2, Minimize2, UserMinus, ShieldAlert, Trash2, Plus, Sun, Moon, Bell, Key, LockKeyhole, Loader2, CloudDownload } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid } from 'recharts';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
+// NAYA: 100% Accurate Calculation Helper Function
+const getStats = (lab: any) => {
+  let earned = 0, kharcha = 0, peshgi = 0;
+  (lab.entries || []).forEach((e: any) => {
+    earned += (e.payeCount || 0) * (e.customRatePerPaya !== undefined ? e.customRatePerPaya : (lab.ratePerPaya || 0));
+    kharcha += (e.kharcha || 0);
+    peshgi += (e.peshgi !== undefined ? e.peshgi : (e.advance || 0));
+  });
+  return { earned, kharcha, peshgi, netBalance: earned - kharcha - peshgi };
+};
+
 export default function AdminDashboard() {
   const router = useRouter();
+  const [isLoading, setIsLoading] = useState(true); // NAYA: Loading State
   const [bhattas, setBhattas] = useState<Bhatta[]>([]);
   const [activeBhattaId, setActiveBhattaId] = useState<string | null>(null);
   const [labourers, setLabourers] = useState<any[]>([]); 
@@ -23,8 +35,8 @@ export default function AdminDashboard() {
   const [toast, setToast] = useState<{msg: string, type: "success" | "error"} | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
 
-  // Theme and Admin Roles State
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
+  // Theme: NAYA DEFAULT IS LIGHT
+  const [theme, setTheme] = useState<"dark" | "light">("light");
   const [adminList, setAdminList] = useState<string[]>([]);
   const [newAdminId, setNewAdminId] = useState("");
 
@@ -67,7 +79,6 @@ export default function AdminDashboard() {
   const [resetPasswordId, setResetPasswordId] = useState<string | null>(null);
   const [newPasswordInput, setNewPasswordInput] = useState("");
   
-  // Notifications state
   const [showNotifications, setShowNotifications] = useState(false);
   const [lastSeenNotifId, setLastSeenNotifId] = useState<string | null>(null);
 
@@ -77,63 +88,83 @@ export default function AdminDashboard() {
   };
 
   useEffect(() => {
-    const session = localStorage.getItem("bhatta_session");
-    if (session !== "admin") {
-      router.push("/");
-      return;
-    }
-
-    // Load Theme
-    const savedTheme = localStorage.getItem("app_theme") as "dark" | "light";
-    if (savedTheme) setTheme(savedTheme);
-
-    // NAYA: Load Last Seen Notification ID
-    const savedNotifId = localStorage.getItem("bhatta_last_notif_id");
-    if (savedNotifId) setLastSeenNotifId(savedNotifId);
-
-    // Load Admins
-    const savedAdmins = JSON.parse(localStorage.getItem("bhatta_admins") || "[]");
-    if (savedAdmins.length === 0) {
-      const defaultAdmins = ["admin", "nadeemxsalar@gmail.com", "realheronadeem", "9368218331"];
-      localStorage.setItem("bhatta_admins", JSON.stringify(defaultAdmins));
-      setAdminList(defaultAdmins);
-    } else {
-      setAdminList(savedAdmins);
-    }
-
-    let savedBhattas = getLabourData("bhattas_list") || [];
-    if (savedBhattas.length === 0) {
-      const defaultBhatta = { id: "bhatta_default", name: "Main Bhatta" };
-      savedBhattas = [defaultBhatta];
-      saveLabourData("bhattas_list", savedBhattas);
-    }
-    setBhattas(savedBhattas);
-    setActiveBhattaId(savedBhattas[0].id);
-
-    let data: any[] = getLabourData("bhatta_labourers") || [];
-    let dataModified = false;
-    
-    const migratedData = data.map((lab: any) => {
-      let newLab = { ...lab };
-      if (!newLab.bhattaId) { newLab.bhattaId = "bhatta_default"; dataModified = true; }
-      if (newLab.totalKharcha === undefined) { newLab.totalKharcha = 0; dataModified = true; }
-      if (newLab.totalPeshgi === undefined) { newLab.totalPeshgi = newLab.totalAdvance || 0; dataModified = true; }
-      if (newLab.ratePerPaya === undefined) { newLab.ratePerPaya = 0; dataModified = true; }
-      
-      if (!newLab.loginId) { 
-        newLab.loginId = newLab.phone || Math.floor(1000 + Math.random() * 9000).toString(); 
-        dataModified = true; 
+    const initApp = async () => {
+      const session = localStorage.getItem("bhatta_session");
+      if (session !== "admin") {
+        router.push("/");
+        return;
       }
+
+      // Theme Setup
+      const savedTheme = localStorage.getItem("app_theme") as "dark" | "light";
+      if (savedTheme) setTheme(savedTheme);
+
+      const savedNotifId = localStorage.getItem("bhatta_last_notif_id");
+      if (savedNotifId) setLastSeenNotifId(savedNotifId);
+
+      const savedAdmins = JSON.parse(localStorage.getItem("bhatta_admins") || "[]");
+      if (savedAdmins.length === 0) {
+        const defaultAdmins = ["admin", "nadeemxsalar@gmail.com", "realheronadeem", "9368218331"];
+        localStorage.setItem("bhatta_admins", JSON.stringify(defaultAdmins));
+        setAdminList(defaultAdmins);
+      } else {
+        setAdminList(savedAdmins);
+      }
+
+      // NAYA: Firebase Cloud Sync before loading UI
+      try {
+        const cloudLab = await fetchFromFirebase("bhatta_labourers");
+        if (cloudLab) localStorage.setItem("bhatta_labourers", JSON.stringify(cloudLab));
+        
+        const cloudBhattas = await fetchFromFirebase("bhattas_list");
+        if (cloudBhattas) localStorage.setItem("bhattas_list", JSON.stringify(cloudBhattas));
+      } catch (error) {
+        console.error("Firebase sync error:", error);
+      }
+
+      // Load Bhattas
+      let savedBhattas = getLabourData("bhattas_list") || [];
+      if (savedBhattas.length === 0) {
+        const defaultBhatta = { id: "bhatta_default", name: "Main Bhatta" };
+        savedBhattas = [defaultBhatta];
+        saveLabourData("bhattas_list", savedBhattas);
+      }
+      setBhattas(savedBhattas);
+
+      // NAYA: Persistent Bhatta State
+      const lastActiveBhatta = localStorage.getItem("active_bhatta_id");
+      if (lastActiveBhatta && savedBhattas.some((b: any) => b.id === lastActiveBhatta)) {
+        setActiveBhattaId(lastActiveBhatta);
+      } else {
+        setActiveBhattaId(savedBhattas[0].id);
+      }
+
+      // Load Labourers
+      let data: any[] = getLabourData("bhatta_labourers") || [];
+      let dataModified = false;
       
-      const safeEntries = Array.isArray(newLab.entries) ? newLab.entries : [];
-      newLab.entries = safeEntries.map((e: any) => ({
-        ...e, kharcha: e.kharcha || 0, peshgi: e.peshgi !== undefined ? e.peshgi : (e.advance || 0), payeCount: e.payeCount || 0, isLeave: e.isLeave || false
-      }));
-      return newLab;
-    });
-    
-    if (dataModified) saveLabourData("bhatta_labourers", migratedData);
-    setLabourers(migratedData);
+      const migratedData = data.map((lab: any) => {
+        let newLab = { ...lab };
+        if (!newLab.bhattaId) { newLab.bhattaId = "bhatta_default"; dataModified = true; }
+        if (!newLab.loginId) { 
+          newLab.loginId = newLab.phone || Math.floor(1000 + Math.random() * 9000).toString(); 
+          dataModified = true; 
+        }
+        const safeEntries = Array.isArray(newLab.entries) ? newLab.entries : [];
+        newLab.entries = safeEntries.map((e: any) => ({
+          ...e, kharcha: e.kharcha || 0, peshgi: e.peshgi !== undefined ? e.peshgi : (e.advance || 0), payeCount: e.payeCount || 0, isLeave: e.isLeave || false
+        }));
+        return newLab;
+      });
+      
+      if (dataModified) saveLabourData("bhatta_labourers", migratedData);
+      setLabourers(migratedData);
+
+      // Hide Loader
+      setIsLoading(false);
+    };
+
+    initApp();
   }, [router]);
 
   useEffect(() => {
@@ -149,6 +180,12 @@ export default function AdminDashboard() {
     const newTheme = theme === "dark" ? "light" : "dark";
     setTheme(newTheme);
     localStorage.setItem("app_theme", newTheme);
+  };
+
+  const handleBhattaChange = (bId: string) => {
+    setActiveBhattaId(bId);
+    localStorage.setItem("active_bhatta_id", bId);
+    setIsSidebarOpen(false);
   };
 
   const handleLogout = () => {
@@ -208,44 +245,38 @@ export default function AdminDashboard() {
   const currentLabourers = labourers.filter(lab => lab.bhattaId === activeBhattaId);
   const activeBhattaName = bhattas.find(b => b.id === activeBhattaId)?.name || "Bhatta";
 
-  // Extract Notifications from Remarks
   const notifications = currentLabourers.flatMap(lab => 
     (lab.entries || [])
       .filter((e: any) => e.remark && e.remark.trim() !== "")
       .map((e: any) => ({
-        id: `${lab.id}_${e.date}`,
-        labName: lab.name,
-        labId: lab.id,
-        date: e.date,
-        remark: e.remark
+        id: `${lab.id}_${e.date}`, labName: lab.name, labId: lab.id, date: e.date, remark: e.remark
       }))
   ).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 15);
 
-  // NAYA: Unread Status Logic
   const hasUnreadNotifications = notifications.length > 0 && notifications[0].id !== lastSeenNotifId;
 
   const toggleNotifications = () => {
     const newState = !showNotifications;
     setShowNotifications(newState);
-    
-    // Agar open kar raha hai, toh red dot hata do
     if (newState && notifications.length > 0) {
       setLastSeenNotifId(notifications[0].id);
       localStorage.setItem("bhatta_last_notif_id", notifications[0].id);
     }
   };
 
+  // NAYA: Accurate Overall Stats
   const overallStats = currentLabourers.reduce((acc, lab) => {
-    let earned = 0;
-    (lab.entries || []).forEach((e: any) => { earned += (e.payeCount || 0) * (e.customRatePerPaya !== undefined ? e.customRatePerPaya : (lab.ratePerPaya || 0)); });
-    acc.totalEarned += earned; acc.totalExpenses += (lab.totalKharcha || 0); acc.totalAdvance += (lab.totalPeshgi !== undefined ? lab.totalPeshgi : (lab.totalAdvance || 0));
+    const stats = getStats(lab);
+    acc.totalEarned += stats.earned; 
+    acc.totalExpenses += stats.kharcha; 
+    acc.totalAdvance += stats.peshgi;
     return acc;
   }, { totalEarned: 0, totalExpenses: 0, totalAdvance: 0 });
 
+  // NAYA: Accurate Chart Data
   const chartData = currentLabourers.map(lab => {
-    let earned = 0;
-    (lab.entries || []).forEach((e: any) => { earned += (e.payeCount || 0) * (e.customRatePerPaya !== undefined ? e.customRatePerPaya : (lab.ratePerPaya || 0)); });
-    return { name: lab.name, Earned: earned, Expenses: lab.totalKharcha || 0, Advance: lab.totalPeshgi || 0 };
+    const stats = getStats(lab);
+    return { name: lab.name, Earned: stats.earned, Expenses: stats.kharcha, Advance: stats.peshgi };
   }).sort((a, b) => b.Earned - a.Earned).slice(0, 10); 
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -296,7 +327,6 @@ export default function AdminDashboard() {
 
         if (colDate) {
           currentLab.entries.push({ id: Date.now().toString() + Math.random().toString(), date: colDate, payeCount: colPaye, customRatePerPaya: colRate, kharcha: colKharcha, peshgi: colAdvance, remark: colRemark, isLeave: false });
-          currentLab.totalPaye += colPaye; currentLab.totalKharcha += colKharcha; currentLab.totalPeshgi += colAdvance;
         }
       }
 
@@ -315,18 +345,16 @@ export default function AdminDashboard() {
 
   const downloadIndividualPDF = (lab: any) => {
     const doc = new jsPDF();
-    let earned = 0;
-    (lab.entries || []).forEach((e: any) => { earned += (e.payeCount || 0) * (e.customRatePerPaya !== undefined ? e.customRatePerPaya : (lab.ratePerPaya || 0)); });
-    const kharcha = lab.totalKharcha || 0; const peshgi = lab.totalPeshgi !== undefined ? lab.totalPeshgi : (lab.totalAdvance || 0); const netBalance = earned - kharcha - peshgi;
+    const stats = getStats(lab);
 
     doc.setFontSize(22); doc.setTextColor(30, 64, 175); doc.text(`${activeBhattaName} - Hisaab Parchi`, 14, 20);
     doc.setFontSize(12); doc.setTextColor(0, 0, 0); doc.text(`Labour Name: ${lab.name}`, 14, 32); doc.text(`Login ID: ${lab.loginId}`, 14, 40); doc.text(`Mobile: ${lab.phone || "-"}`, 14, 48); doc.text(`Location: ${lab.paya || "-"}`, 14, 56);
     
-    doc.text(`Total Kamai: Rs ${earned.toLocaleString()}`, 120, 32); doc.text(`Total Kharcha: Rs ${kharcha.toLocaleString()}`, 120, 40); doc.text(`Total Peshgi: Rs ${peshgi.toLocaleString()}`, 120, 48);
+    doc.text(`Total Kamai: Rs ${stats.earned.toLocaleString()}`, 120, 32); doc.text(`Total Kharcha: Rs ${stats.kharcha.toLocaleString()}`, 120, 40); doc.text(`Total Peshgi: Rs ${stats.peshgi.toLocaleString()}`, 120, 48);
     
     doc.setFont("helvetica", "bold");
-    if(netBalance < 0) { doc.setTextColor(220, 38, 38); doc.text(`Final Balance: Rs ${Math.abs(netBalance).toLocaleString()} (Aap par hai)`, 120, 56); } 
-    else { doc.setTextColor(16, 185, 129); doc.text(`Final Balance: Rs ${netBalance.toLocaleString()} (Aapko lene hain)`, 120, 56); }
+    if(stats.netBalance < 0) { doc.setTextColor(220, 38, 38); doc.text(`Final Balance: Rs ${Math.abs(stats.netBalance).toLocaleString()} (Aap par hai)`, 120, 56); } 
+    else { doc.setTextColor(16, 185, 129); doc.text(`Final Balance: Rs ${stats.netBalance.toLocaleString()} (Aapko lene hain)`, 120, 56); }
 
     const tableData = (lab.entries || []).filter((e:any) => e.payeCount > 0 || e.kharcha > 0 || e.peshgi !== 0 || e.remark || e.isLeave).map((e:any) => [
         e.date, e.isLeave ? "LEAVE" : (e.payeCount || 0), e.isLeave ? "-" : ((e.payeCount || 0) * (e.customRatePerPaya !== undefined ? e.customRatePerPaya : (lab.ratePerPaya || 0))), e.kharcha || 0, e.peshgi || 0, e.remark || "-"
@@ -343,11 +371,9 @@ export default function AdminDashboard() {
     doc.setFontSize(11); doc.setTextColor(0, 0, 0); doc.text(`Total Kamai: Rs ${overallStats.totalEarned.toLocaleString()}`, 14, 30); doc.text(`Total Kharcha: Rs ${overallStats.totalExpenses.toLocaleString()}`, 80, 30); doc.text(`Total Advance: Rs ${overallStats.totalAdvance.toLocaleString()}`, 150, 30);
 
     const tableData = currentLabourers.map(lab => {
-      let earned = 0;
-      (lab.entries || []).forEach((e: any) => { earned += (e.payeCount || 0) * (e.customRatePerPaya !== undefined ? e.customRatePerPaya : (lab.ratePerPaya || 0)); });
-      const kharcha = lab.totalKharcha || 0; const peshgi = lab.totalPeshgi !== undefined ? lab.totalPeshgi : (lab.totalAdvance || 0); const net = earned - kharcha - peshgi;
-      const netText = net < 0 ? `-${Math.abs(net)} (Len)` : `${net} (Den)`;
-      return [lab.name, lab.loginId, earned, kharcha, peshgi, netText];
+      const stats = getStats(lab);
+      const netText = stats.netBalance < 0 ? `-${Math.abs(stats.netBalance)} (Len)` : `${stats.netBalance} (Den)`;
+      return [lab.name, lab.loginId, stats.earned, stats.kharcha, stats.peshgi, netText];
     });
 
     autoTable(doc, { startY: 38, head: [['Name', 'ID', 'Earned', 'Kharcha', 'Peshgi', 'Net Balance']], body: tableData, theme: 'grid', headStyles: { fillColor: [15, 23, 42] } });
@@ -360,7 +386,7 @@ export default function AdminDashboard() {
     const newBhatta: Bhatta = { id: `bhatta_${Date.now()}`, name: newBhattaName };
     const updated = [...bhattas, newBhatta];
     setBhattas(updated); saveLabourData("bhattas_list", updated);
-    setActiveBhattaId(newBhatta.id); setNewBhattaName(""); setIsAddingBhatta(false); setIsSidebarOpen(false);
+    handleBhattaChange(newBhatta.id); setNewBhattaName(""); setIsAddingBhatta(false);
   };
 
   const handleAddLabour = (e: React.FormEvent) => {
@@ -400,7 +426,7 @@ export default function AdminDashboard() {
         return e;
       });
       if (!entryExists) { updatedEntries.push({ id: Date.now().toString() + Math.random().toString(), date: entryDate, bricks: 0, payeCount: paye, customRatePerPaya: activePayeRate, kharcha: 0, peshgi: 0, isLeave: false }); }
-      updatedLabourers[labourIndex] = { ...selectedLabour, entries: updatedEntries, totalPaye: (selectedLabour.totalPaye || 0) + paye };
+      updatedLabourers[labourIndex] = { ...selectedLabour, entries: updatedEntries };
     });
     setLabourers(updatedLabourers); saveLabourData("bhatta_labourers", updatedLabourers);
     setPayeAmount(""); setSelectedLabourIds([]); showToast("Work entry successfully chadh gayi!", "success");
@@ -432,9 +458,12 @@ export default function AdminDashboard() {
     if (!kharchaLabourId || !kharchaAmount) return showToast("Select labour and enter amount!", "error");
     const amount = Number(kharchaAmount);
     if (amount <= 0) return showToast("Amount galat hai!", "error");
-    const newEntry: DailyEntry = { id: Date.now().toString(), date: new Date().toISOString().split("T")[0], bricks: 0, payeCount: 0, kharcha: amount, peshgi: 0 };
+    
     const updatedLabourers = labourers.map(lab => {
-      if (lab.id === kharchaLabourId) return { ...lab, entries: [...lab.entries, newEntry], totalKharcha: (lab.totalKharcha || 0) + amount };
+      if (lab.id === kharchaLabourId) {
+        const newEntry: DailyEntry = { id: Date.now().toString(), date: new Date().toISOString().split("T")[0], bricks: 0, payeCount: 0, kharcha: amount, peshgi: 0 };
+        return { ...lab, entries: [...lab.entries, newEntry] };
+      }
       return lab;
     });
     setLabourers(updatedLabourers); saveLabourData("bhatta_labourers", updatedLabourers);
@@ -458,7 +487,7 @@ export default function AdminDashboard() {
         return e;
       });
       if (!entryExists) { updatedEntries.push({ id: Date.now().toString() + Math.random().toString(), date: bulkKharchaDate, bricks: 0, payeCount: 0, customRatePerPaya: selectedLabour.ratePerPaya || 0, kharcha: amount, peshgi: 0 }); }
-      updatedLabourers[labourIndex] = { ...selectedLabour, entries: updatedEntries, totalKharcha: (selectedLabour.totalKharcha || 0) + amount };
+      updatedLabourers[labourIndex] = { ...selectedLabour, entries: updatedEntries };
     });
     setLabourers(updatedLabourers); saveLabourData("bhatta_labourers", updatedLabourers);
     setBulkKharchaAmount(""); setSelectedKharchaIds([]); showToast("Bulk Khuraak successfully add ho gayi!", "success");
@@ -470,6 +499,7 @@ export default function AdminDashboard() {
     const amount = Number(peshgiAmount);
     if (amount <= 0) return showToast("Amount galat hai!", "error");
     const finalAmount = peshgiType === "add" ? amount : -amount;
+    
     const updatedLabourers = labourers.map(lab => {
       if (lab.id === peshgiLabourId) {
         let entryExists = false;
@@ -478,8 +508,7 @@ export default function AdminDashboard() {
           return e;
         });
         if (!entryExists) { updatedEntries.push({ id: Date.now().toString() + Math.random().toString(), date: peshgiDate, bricks: 0, payeCount: 0, customRatePerPaya: lab.ratePerPaya || 0, kharcha: 0, peshgi: finalAmount }); }
-        const newTotalPeshgi = updatedEntries.reduce((sum: number, e: any) => sum + (e.peshgi || 0), 0);
-        return { ...lab, entries: updatedEntries, totalPeshgi: newTotalPeshgi };
+        return { ...lab, entries: updatedEntries };
       }
       return lab;
     });
@@ -520,6 +549,23 @@ export default function AdminDashboard() {
   const tableBody = isDark ? "divide-slate-700/50 text-slate-200" : "divide-slate-200 text-slate-700";
   const tableRowHover = isDark ? "hover:bg-slate-800/40" : "hover:bg-slate-50";
   const modalInner = isDark ? "bg-slate-950 border-slate-700" : "bg-slate-50 border-slate-200";
+
+  // NAYA: Loader UI
+  if (isLoading) {
+    return (
+      <div className={`min-h-screen flex flex-col items-center justify-center transition-colors duration-500 ${bgMain}`}>
+        <div className="relative flex items-center justify-center mb-6">
+          <div className="absolute inset-0 bg-blue-500/20 blur-xl rounded-full w-24 h-24 animate-pulse"></div>
+          <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin z-10"></div>
+          <CloudDownload size={24} className="absolute text-blue-500 z-10" />
+        </div>
+        <h2 className="text-xl font-extrabold tracking-tight bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent animate-pulse">
+          Syncing Bhatta Cloud Data...
+        </h2>
+        <p className={`text-sm mt-2 font-medium ${textMuted}`}>Updating secure records</p>
+      </div>
+    );
+  }
 
   return (
     <div className={`min-h-screen font-sans selection:bg-blue-500/30 relative transition-colors duration-300 ${bgMain}`}>
@@ -604,14 +650,14 @@ export default function AdminDashboard() {
         </div>
         <div className="flex items-center gap-2 md:gap-3">
           
-          {/* 🔔 Notification Bell */}
+          {/* NAYA: Mobile Par Sahi Dikhne Wala Notification Dropdown */}
           <div className="relative">
             <button onClick={toggleNotifications} className={`p-2 rounded-full transition-colors relative ${isDark ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-100 text-slate-600'}`}>
               <Bell size={20} />
               {hasUnreadNotifications && <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-rose-500 rounded-full border border-[#0f172a] animate-pulse"></span>}
             </button>
             {showNotifications && (
-              <div className={`absolute right-0 mt-2 w-80 max-h-[400px] overflow-y-auto custom-scrollbar rounded-xl border shadow-2xl p-2 animate-in fade-in zoom-in-95 duration-200 ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
+              <div className={`absolute right-[-60px] sm:right-0 mt-4 w-[300px] sm:w-80 max-h-[400px] overflow-y-auto custom-scrollbar rounded-xl border shadow-2xl p-2 animate-in fade-in zoom-in-95 duration-200 z-[200] ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
                 <div className="px-3 py-2 border-b mb-2 flex justify-between items-center sticky top-0 bg-inherit z-10">
                   <h3 className={`font-bold text-sm ${textMain}`}>Recent Labour Notes</h3>
                   <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500'}`}>{notifications.length} Total</span>
@@ -623,7 +669,6 @@ export default function AdminDashboard() {
                     {notifications.map(notif => (
                       <div 
                         key={notif.id} 
-                        // Click karne par seedha user profile open hogi
                         onClick={() => { router.push(`/labour/${notif.labId}`); setShowNotifications(false); }}
                         className={`p-3 rounded-lg flex flex-col gap-1 transition-colors cursor-pointer ${isDark ? 'hover:bg-slate-800' : 'hover:bg-slate-50'}`}
                       >
@@ -665,14 +710,13 @@ export default function AdminDashboard() {
           
           <div className={`h-px w-full my-4 ${isDark ? 'bg-slate-700/50' : 'bg-slate-200'}`}></div>
           <button onClick={() => changeTab("role")} className={`w-full flex items-center gap-3 p-3 rounded-xl transition font-medium ${activeTab === "role" ? "bg-violet-600 text-white shadow-lg shadow-violet-500/30" : (isDark ? "hover:bg-slate-800 text-violet-400" : "hover:bg-violet-50 text-violet-600")}`}><ShieldAlert size={20} /> Give Power (Admins)</button>
-
         </div>
 
         <div className={`p-4 border-t ${isDark ? 'border-slate-700/50 bg-slate-900/50' : 'border-slate-200 bg-slate-50'}`}>
           <h3 className={`text-xs font-semibold uppercase tracking-wider mb-3 flex items-center gap-2 ${textMuted}`}><Building2 size={14}/> Work Sites</h3>
           <div className="space-y-2 max-h-40 overflow-y-auto mb-3 pr-2 custom-scrollbar">
             {bhattas.map(b => (
-              <button key={b.id} onClick={() => { setActiveBhattaId(b.id); setIsSidebarOpen(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-sm transition border ${activeBhattaId === b.id ? (isDark ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-400' : 'bg-emerald-50 border-emerald-200 text-emerald-600 font-bold') : (isDark ? 'border-transparent hover:bg-slate-700 text-slate-300' : 'border-transparent hover:bg-slate-100 text-slate-600')}`}>{b.name}</button>
+              <button key={b.id} onClick={() => handleBhattaChange(b.id)} className={`w-full text-left px-3 py-2 rounded-lg text-sm transition border ${activeBhattaId === b.id ? (isDark ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-400' : 'bg-emerald-50 border-emerald-200 text-emerald-600 font-bold') : (isDark ? 'border-transparent hover:bg-slate-700 text-slate-300' : 'border-transparent hover:bg-slate-100 text-slate-600')}`}>{b.name}</button>
             ))}
           </div>
           {isAddingBhatta ? (
@@ -739,16 +783,16 @@ export default function AdminDashboard() {
               <div className="space-y-4">
                 {filteredDashboard.length === 0 && <p className={`text-center py-4 font-medium ${textMuted}`}>No results found.</p>}
                 {filteredDashboard.map((lab) => {
-                  let payeKamai = 0; (lab.entries || []).forEach((e: any) => { payeKamai += (e.payeCount || 0) * (e.customRatePerPaya !== undefined ? e.customRatePerPaya : (lab.ratePerPaya || 0)); });
-                  const safeTotalKharcha = lab.totalKharcha || 0; const safeTotalPeshgi = lab.totalPeshgi !== undefined ? lab.totalPeshgi : ((lab as any).totalAdvance || 0);
+                  // NAYA: Accurate Stats for each Labour
+                  const stats = getStats(lab);
 
                   return (
                     <div key={lab.id} className={`p-4 rounded-xl border flex flex-col lg:flex-row justify-between items-center gap-4 transition-all ${isDark ? 'bg-slate-900/40 border-slate-700/50 hover:bg-slate-800/60' : 'bg-slate-50 border-slate-200 hover:bg-white hover:shadow-md'}`}>
                       <div className="flex-1 w-full text-left"><h3 className={`font-extrabold text-xl ${textMain}`}>{lab.name}</h3><p className={`text-sm mt-1 ${textMuted}`}>ID: <span className="text-blue-500 font-bold">{lab.loginId}</span> | {lab.phone}</p></div>
                       <div className="flex-1 w-full flex flex-col sm:flex-row gap-3 justify-start lg:justify-center">
-                        <div className={`text-left px-4 py-2 rounded-lg border ${isDark ? 'bg-slate-900/50 border-slate-700/50' : 'bg-white border-slate-200 shadow-sm'}`}><p className="text-emerald-500 text-[10px] font-bold uppercase tracking-wider">Earned</p><p className={`text-lg font-extrabold ${textMain}`}>₹{payeKamai.toLocaleString()}</p></div>
-                        <div className={`text-left px-4 py-2 rounded-lg border ${isDark ? 'bg-slate-900/50 border-slate-700/50' : 'bg-white border-slate-200 shadow-sm'}`}><p className="text-orange-500 text-[10px] font-bold uppercase tracking-wider">Expenses</p><p className={`text-lg font-extrabold ${textMain}`}>₹{safeTotalKharcha.toLocaleString()}</p></div>
-                        <div className={`text-left px-4 py-2 rounded-lg border ${isDark ? 'bg-slate-900/50 border-slate-700/50' : 'bg-white border-slate-200 shadow-sm'}`}><p className="text-rose-500 text-[10px] font-bold uppercase tracking-wider">Advance</p><p className={`text-lg font-extrabold ${textMain}`}>₹{safeTotalPeshgi.toLocaleString()}</p></div>
+                        <div className={`text-left px-4 py-2 rounded-lg border ${isDark ? 'bg-slate-900/50 border-slate-700/50' : 'bg-white border-slate-200 shadow-sm'}`}><p className="text-emerald-500 text-[10px] font-bold uppercase tracking-wider">Earned</p><p className={`text-lg font-extrabold ${textMain}`}>₹{stats.earned.toLocaleString()}</p></div>
+                        <div className={`text-left px-4 py-2 rounded-lg border ${isDark ? 'bg-slate-900/50 border-slate-700/50' : 'bg-white border-slate-200 shadow-sm'}`}><p className="text-orange-500 text-[10px] font-bold uppercase tracking-wider">Expenses</p><p className={`text-lg font-extrabold ${textMain}`}>₹{stats.kharcha.toLocaleString()}</p></div>
+                        <div className={`text-left px-4 py-2 rounded-lg border ${isDark ? 'bg-slate-900/50 border-slate-700/50' : 'bg-white border-slate-200 shadow-sm'}`}><p className="text-rose-500 text-[10px] font-bold uppercase tracking-wider">Advance</p><p className={`text-lg font-extrabold ${textMain}`}>₹{stats.peshgi.toLocaleString()}</p></div>
                       </div>
                       <div className="w-full lg:w-auto flex justify-end gap-2">
                         <Link href={`/labour/${lab.id}`} className="flex items-center justify-center gap-2 px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl transition-all font-bold whitespace-nowrap shadow-md active:scale-95"><FileText size={18} /> View Register</Link>
@@ -1098,7 +1142,7 @@ export default function AdminDashboard() {
                     <tbody className={`text-sm ${tableBody}`}>
                       {filteredPeshgi.length === 0 && <tr><td colSpan={3} className={`p-4 text-center font-medium ${textMuted}`}>No records found.</td></tr>}
                       {filteredPeshgi.map(lab => {
-                        const totalPeshgi = lab.totalPeshgi !== undefined ? lab.totalPeshgi : ((lab as any).totalAdvance || 0);
+                        const totalPeshgi = getStats(lab).peshgi; // NAYA: Accurate calculation
                         const isExpanded = expandedPeshgiLabourId === lab.id;
                         
                         const peshgiHistory = (lab.entries || [])
