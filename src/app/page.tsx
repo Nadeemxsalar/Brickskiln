@@ -2,12 +2,9 @@
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { getLabourData, saveLabourData, fetchFromFirebase } from "../lib/storage";
-import { User, Lock, LogIn, UserPlus, Phone, AlertCircle, CheckCircle, ArrowRight, Building2, Users, Receipt, ShieldCheck, Zap, X, Sun, Moon, Mail } from "lucide-react";
-
-// NAYA: Added GoogleAuthProvider and signInWithPopup
+import { User, Lock, LogIn, UserPlus, Phone, AlertCircle, CheckCircle, ArrowRight, Building2, Users, Receipt, ShieldCheck, Zap, X, Sun, Moon, Mail, DownloadCloud } from "lucide-react";
 import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 
-// Google Icon SVG
 const GoogleIcon = () => (
   <svg className="w-6 h-6" viewBox="0 0 24 24">
     <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
@@ -33,6 +30,10 @@ export default function HomeAuthPage() {
   
   const [toast, setToast] = useState<{msg: string, type: "success" | "error"} | null>(null);
 
+  // 🟢 NAYA: PWA App Installation States
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [showInstallBtn, setShowInstallBtn] = useState(false);
+
   useEffect(() => {
     const savedTheme = localStorage.getItem("app_theme") as "dark" | "light";
     if (savedTheme) setTheme(savedTheme);
@@ -40,7 +41,47 @@ export default function HomeAuthPage() {
     const session = localStorage.getItem("bhatta_session");
     if (session === "admin") router.push("/admin");
     else if (session?.startsWith("user_")) router.push(`/labour/${session.split("_")[1]}`);
+
+    // 🟢 NAYA: PWA Service Worker & Install Logic
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch((err) => console.log("SW Register Failed:", err));
+    }
+
+    const handleBeforeInstallPrompt = (e: any) => {
+      e.preventDefault(); // Roko Chrome ko automatically dikhane se
+      setDeferredPrompt(e); // Event save karo
+      setShowInstallBtn(true); // Apna custom button dikhao
+    };
+
+    const handleAppInstalled = () => {
+      setShowInstallBtn(false);
+      setDeferredPrompt(null);
+      showToast("Bricks Kiln App Installed!", "success");
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    window.addEventListener('appinstalled', handleAppInstalled);
+
+    // Agar pehle se install hai ya full screen me khula hai, toh button hide karo
+    if (window.matchMedia('(display-mode: standalone)').matches) {
+      setShowInstallBtn(false);
+    }
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      window.removeEventListener('appinstalled', handleAppInstalled);
+    };
   }, [router]);
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setShowInstallBtn(false);
+    }
+    setDeferredPrompt(null);
+  };
 
   const toggleTheme = () => {
     const newTheme = theme === "dark" ? "light" : "dark";
@@ -64,7 +105,7 @@ export default function HomeAuthPage() {
     setTimeout(() => setAuthMode("hidden"), 500); 
   };
 
-  // 🟢 100% FIREBASE LOGIN (FOR BOTH ADMIN AND LABOUR)
+  // 100% FIREBASE LOGIN
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!id || !password) return showToast("ID and Password are required!", "error");
@@ -75,33 +116,26 @@ export default function HomeAuthPage() {
     try {
       const cloudAdmins = await fetchFromFirebase("bhatta_admins");
       if (cloudAdmins) localStorage.setItem("bhatta_admins", JSON.stringify(cloudAdmins));
-      
       const cloudLab = await fetchFromFirebase("bhatta_labourers");
       if (cloudLab) localStorage.setItem("bhatta_labourers", JSON.stringify(cloudLab));
-
       const cloudBhatta = await fetchFromFirebase("bhattas_list");
       if (cloudBhatta) localStorage.setItem("bhattas_list", JSON.stringify(cloudBhatta));
 
       const inputId = id.toLowerCase().trim();
       let loginEmail = inputId;
-      if (!loginEmail.includes("@")) {
-        loginEmail = `${loginEmail}@bhattapro.com`; 
-      }
+      if (!loginEmail.includes("@")) { loginEmail = `${loginEmail}@bhattapro.com`; }
 
       const auth = getAuth();
       let firebaseSuccess = false;
 
       try {
-        // 🔥 STRICT FIREBASE AUTHENTICATION (Master Admin checks happen here too!)
         await signInWithEmailAndPassword(auth, loginEmail, password);
         firebaseSuccess = true;
       } catch (authError: any) {
-        // 🚀 AUTO-SYNC FOR CSV IMPORTED LABOURERS (ONLY)
         const labourers = getLabourData("bhatta_labourers") || [];
         const rawId = id.trim();
         const labour = labourers.find((l: any) => l.loginId === rawId || l.phone === rawId);
 
-        // Naya imported labour bina password wala
         if (labour && !labour.password) {
           setLoadingText("Securing Imported Account...");
           try {
@@ -127,16 +161,12 @@ export default function HomeAuthPage() {
         }
       }
 
-      // 4. IF FIREBASE LOGIN WAS SUCCESSFUL
       if (firebaseSuccess) {
-        // Admin Verify
         const savedAdmins = JSON.parse(localStorage.getItem("bhatta_admins") || "[]");
         const masterAdmins = ["nadeemxsalar@gmail.com", "realheronadeem@gmail.com"];
         const dynamicAdmins = savedAdmins.map((a: string) => a.includes("@") ? a.toLowerCase() : `${a.toLowerCase()}@bhattapro.com`); 
-        
         const allAdmins = [...masterAdmins, ...dynamicAdmins];
 
-        // Is it an Admin?
         if (allAdmins.includes(loginEmail)) {
           localStorage.setItem("bhatta_session", "admin");
           setLoadingText("Loading Workspace...");
@@ -145,7 +175,6 @@ export default function HomeAuthPage() {
           return;
         }
 
-        // Is it a Labourer?
         const labourers = getLabourData("bhatta_labourers") || [];
         const rawId = id.trim();
         const labour = labourers.find((l: any) => l.loginId === rawId || l.phone === rawId);
@@ -160,7 +189,6 @@ export default function HomeAuthPage() {
           setIsAuthenticating(false);
         }
       }
-
     } catch (error) {
       console.error("Login Auth Error:", error);
       showToast("Something went wrong. Please try again.", "error");
@@ -168,7 +196,6 @@ export default function HomeAuthPage() {
     }
   };
 
-  // 🟢 STANDARD SIGNUP
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || !password) return showToast("All details are required!", "error");
@@ -198,7 +225,7 @@ export default function HomeAuthPage() {
       await createUserWithEmailAndPassword(auth, signupEmail, password);
 
       const newLabour: any = {
-        id: Date.now().toString(), bhattaId: "bhatta_default", name, loginId: newLoginId, password, phone: contact, ratePerThousand: 0, ratePerPaya: 0, paya: "-", totalBricks: 0, totalPaye: 0, totalKharcha: 0, totalPeshgi: 0, entries: []
+        id: Date.now().toString(), bhattaId: "bhatta_default", name, loginId: newLoginId, password, phone: contact, ratePerThousand: 0, ratePerPaya: 0, paya: "-", totalBricks: 0, totalPaye: 0, totalKharcha: 0, totalPeshgi: 0, isDeleted: false, entries: []
       };
 
       const updatedList = [...labourers, newLabour];
@@ -211,39 +238,29 @@ export default function HomeAuthPage() {
 
     } catch (error: any) {
       console.error("Signup Auth Error:", error);
-      if (error.code === 'auth/email-already-in-use') {
-        showToast("This Account already exists!", "error");
-      } else if (error.code === 'auth/weak-password') {
-        showToast("Password must be at least 6 characters.", "error");
-      } else {
-        showToast("Network Error. Please try again.", "error");
-      }
+      if (error.code === 'auth/email-already-in-use') { showToast("This Account already exists!", "error"); } 
+      else if (error.code === 'auth/weak-password') { showToast("Password must be at least 6 characters.", "error"); } 
+      else { showToast("Network Error. Please try again.", "error"); }
       setIsAuthenticating(false);
     }
   };
 
-  // 🟢 1-CLICK GOOGLE SIGN IN (For Both Admin and Labour)
   const handleGoogleAuth = async () => {
     setIsAuthenticating(true);
     setLoadingText("Connecting to Google...");
-    
     try {
       const auth = getAuth();
       const provider = new GoogleAuthProvider();
       const result = await signInWithPopup(auth, provider);
-      
       const user = result.user;
       const googleEmail = user.email?.toLowerCase() || "";
       const googleName = user.displayName || "Google User";
 
-      // Fetch Latest Data
       const cloudAdmins = await fetchFromFirebase("bhatta_admins");
       if (cloudAdmins) localStorage.setItem("bhatta_admins", JSON.stringify(cloudAdmins));
-      
       const cloudLab = await fetchFromFirebase("bhatta_labourers");
       if (cloudLab) localStorage.setItem("bhatta_labourers", JSON.stringify(cloudLab));
 
-      // 1. ADMIN CHECK
       const savedAdmins = JSON.parse(localStorage.getItem("bhatta_admins") || "[]");
       const masterAdmins = ["nadeemxsalar@gmail.com", "realheronadeem@gmail.com"];
       const dynamicAdmins = savedAdmins.map((a: string) => a.toLowerCase()); 
@@ -257,7 +274,6 @@ export default function HomeAuthPage() {
         return;
       }
 
-      // 2. LABOURER CHECK OR AUTO-SIGNUP
       const labourers = getLabourData("bhatta_labourers") || [];
       const labour = labourers.find((l: any) => l.phone?.toLowerCase() === googleEmail || l.loginId === googleEmail);
 
@@ -269,14 +285,11 @@ export default function HomeAuthPage() {
       } else {
         setLoadingText("Creating Google Profile...");
         let maxId = 1000;
-        labourers.forEach((l: any) => {
-          const num = parseInt(l.loginId, 10);
-          if (!isNaN(num) && num > maxId) maxId = num;
-        });
+        labourers.forEach((l: any) => { const num = parseInt(l.loginId, 10); if (!isNaN(num) && num > maxId) maxId = num; });
         const newLoginId = (maxId + 1).toString();
 
         const newLabour: any = {
-          id: Date.now().toString(), bhattaId: "bhatta_default", name: googleName, loginId: newLoginId, password: "", phone: googleEmail, ratePerThousand: 0, ratePerPaya: 0, paya: "-", totalBricks: 0, totalPaye: 0, totalKharcha: 0, totalPeshgi: 0, entries: []
+          id: Date.now().toString(), bhattaId: "bhatta_default", name: googleName, loginId: newLoginId, password: "", phone: googleEmail, ratePerThousand: 0, ratePerPaya: 0, paya: "-", totalBricks: 0, totalPaye: 0, totalKharcha: 0, totalPeshgi: 0, isDeleted: false, entries: []
         };
 
         const updatedList = [...labourers, newLabour];
@@ -290,9 +303,7 @@ export default function HomeAuthPage() {
 
     } catch (error: any) {
       console.error("Google Auth Error:", error);
-      if (error.code !== 'auth/popup-closed-by-user') {
-        showToast("Google Sign-In failed. Please try again.", "error");
-      }
+      if (error.code !== 'auth/popup-closed-by-user') { showToast("Google Sign-In failed. Please try again.", "error"); }
       setIsAuthenticating(false);
     }
   };
@@ -327,9 +338,17 @@ export default function HomeAuthPage() {
             <div className="bg-emerald-500/20 p-2 rounded-xl">
               <Building2 className="text-emerald-500 w-6 h-6" />
             </div>
-            <span className="text-xl md:text-2xl font-extrabold tracking-tight bg-gradient-to-r from-emerald-500 to-blue-500 bg-clip-text text-transparent">Bhatta Pro</span>
+            <span className="text-xl md:text-2xl font-extrabold tracking-tight bg-gradient-to-r from-emerald-500 to-blue-500 bg-clip-text text-transparent">Bricks Kiln</span>
           </div>
           <div className="flex items-center gap-4">
+            
+            {/* 🟢 NAYA: APP INSTALL BUTTON (Visible only if app is installable) */}
+            {showInstallBtn && (
+              <button onClick={handleInstallClick} className="hidden sm:flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-sm font-bold shadow-lg shadow-emerald-500/20 active:scale-95 transition-all animate-in zoom-in duration-500">
+                <DownloadCloud size={18} /> Install App
+              </button>
+            )}
+
             <button onClick={toggleTheme} className={`p-2 rounded-full transition-colors ${isDark ? 'bg-slate-800 text-yellow-400 hover:bg-slate-700' : 'bg-white text-slate-600 shadow-md hover:bg-slate-50'}`}>
               {isDark ? <Sun size={18} /> : <Moon size={18} />}
             </button>
@@ -362,6 +381,14 @@ export default function HomeAuthPage() {
               <LogIn size={20}/> Login Now
             </button>
           </div>
+
+          {/* 🟢 NAYA: PWA Mobile Install Button (Visible on Small Screens) */}
+          {showInstallBtn && (
+            <button onClick={handleInstallClick} className="mt-8 px-6 py-3 sm:hidden flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-xl font-bold shadow-lg animate-bounce">
+              <DownloadCloud size={20} /> Install "Bricks Kiln" App
+            </button>
+          )}
+
         </div>
 
         <div className="max-w-7xl mx-auto px-6 pb-20 grid grid-cols-1 md:grid-cols-3 gap-6 relative z-10">
@@ -434,7 +461,7 @@ export default function HomeAuthPage() {
                       <Building2 className="w-8 h-8 text-emerald-500" />
                     </div>
                     <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight bg-gradient-to-r from-emerald-500 via-blue-500 to-purple-500 bg-clip-text text-transparent mb-2">
-                      Bhatta Pro
+                      Bricks Kiln
                     </h1>
                     <p className={`${textMuted} text-sm`}>Your ledger, in your hands.</p>
                   </div>
