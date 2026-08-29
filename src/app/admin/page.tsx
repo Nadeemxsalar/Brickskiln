@@ -4,12 +4,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { saveLabourData, getLabourData, fetchFromFirebase } from "../../lib/storage";
 import { Labour, DailyEntry, Bhatta } from "../../types";
-import { Menu, X, FileText, LayoutDashboard, IndianRupee, Users, Building2, Layers, Wallet, Settings, Check, LogOut, CheckSquare, Search, AlertCircle, CheckCircle, TrendingDown, TrendingUp, ChevronRight, ChevronDown, History, BarChart3, Upload, FileSpreadsheet, Download, FileDown, Maximize2, Minimize2, UserMinus, ShieldAlert, Trash2, Plus, Sun, Moon, Bell, Key, LockKeyhole, Loader2, CloudDownload } from "lucide-react";
+import { Menu, X, FileText, LayoutDashboard, IndianRupee, Users, Building2, Layers, Wallet, Settings, Check, LogOut, CheckSquare, Search, AlertCircle, CheckCircle, TrendingDown, TrendingUp, ChevronRight, ChevronDown, History, BarChart3, Upload, FileSpreadsheet, Download, FileDown, Maximize2, Minimize2, UserMinus, ShieldAlert, Trash2, Plus, Sun, Moon, Bell, Key, LockKeyhole, Loader2, CloudDownload, RefreshCcw, DatabaseBackup, Globe, Trash } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid } from 'recharts';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
-// NAYA: 100% Accurate Calculation Helper Function
+// Accurate Calculation Helper Function
 const getStats = (lab: any) => {
   let earned = 0, kharcha = 0, peshgi = 0;
   (lab.entries || []).forEach((e: any) => {
@@ -22,7 +22,7 @@ const getStats = (lab: any) => {
 
 export default function AdminDashboard() {
   const router = useRouter();
-  const [isLoading, setIsLoading] = useState(true); // NAYA: Loading State
+  const [isLoading, setIsLoading] = useState(true); 
   const [bhattas, setBhattas] = useState<Bhatta[]>([]);
   const [activeBhattaId, setActiveBhattaId] = useState<string | null>(null);
   const [labourers, setLabourers] = useState<any[]>([]); 
@@ -30,13 +30,15 @@ export default function AdminDashboard() {
   const [isAddingBhatta, setIsAddingBhatta] = useState(false);
   
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<"dashboard" | "eent" | "kharcha" | "peshgi" | "manage" | "download" | "role">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "eent" | "kharcha" | "peshgi" | "manage" | "download" | "role" | "recycle">("dashboard");
 
   const [toast, setToast] = useState<{msg: string, type: "success" | "error"} | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
 
-  // Theme: NAYA DEFAULT IS LIGHT
+  // 🟢 NAYA: Language & Theme
   const [theme, setTheme] = useState<"dark" | "light">("light");
+  const [lang, setLang] = useState<"en" | "hi">("en");
+  
   const [adminList, setAdminList] = useState<string[]>([]);
   const [newAdminId, setNewAdminId] = useState("");
 
@@ -75,12 +77,20 @@ export default function AdminDashboard() {
   const [editingLabourId, setEditingLabourId] = useState<string | null>(null);
   const [editLabourData, setEditLabourData] = useState<{name: string, loginId: string, phone: string, paya: string, payeRate: number} | null>(null);
 
-  const [deleteLabourId, setDeleteLabourId] = useState<string | null>(null);
   const [resetPasswordId, setResetPasswordId] = useState<string | null>(null);
   const [newPasswordInput, setNewPasswordInput] = useState("");
   
   const [showNotifications, setShowNotifications] = useState(false);
   const [lastSeenNotifId, setLastSeenNotifId] = useState<string | null>(null);
+
+  // 🟢 NAYA: Admin Security PIN System
+  const [adminPin, setAdminPin] = useState<string | null>(null);
+  const [showPinModal, setShowPinModal] = useState<{action: "delete" | "reset" | "restore" | "hard_delete", targetId: string} | null>(null);
+  const [pinInput, setPinInput] = useState("");
+  const [newPinSetup, setNewPinSetup] = useState("");
+
+  // NAYA: Translation Helper Function
+  const t = (en: string, hi: string) => lang === "hi" ? hi : en;
 
   const showToast = (msg: string, type: "success" | "error" = "success") => {
     setToast({ msg, type });
@@ -95,9 +105,14 @@ export default function AdminDashboard() {
         return;
       }
 
-      // Theme Setup
       const savedTheme = localStorage.getItem("app_theme") as "dark" | "light";
       if (savedTheme) setTheme(savedTheme);
+
+      const savedLang = localStorage.getItem("app_lang") as "en" | "hi";
+      if (savedLang) setLang(savedLang);
+
+      const savedPin = localStorage.getItem("bhatta_admin_pin");
+      if (savedPin) setAdminPin(atob(savedPin)); // Simple decode
 
       const savedNotifId = localStorage.getItem("bhatta_last_notif_id");
       if (savedNotifId) setLastSeenNotifId(savedNotifId);
@@ -111,7 +126,6 @@ export default function AdminDashboard() {
         setAdminList(savedAdmins);
       }
 
-      // NAYA: Firebase Cloud Sync before loading UI
       try {
         const cloudLab = await fetchFromFirebase("bhatta_labourers");
         if (cloudLab) localStorage.setItem("bhatta_labourers", JSON.stringify(cloudLab));
@@ -122,7 +136,6 @@ export default function AdminDashboard() {
         console.error("Firebase sync error:", error);
       }
 
-      // Load Bhattas
       let savedBhattas = getLabourData("bhattas_list") || [];
       if (savedBhattas.length === 0) {
         const defaultBhatta = { id: "bhatta_default", name: "Main Bhatta" };
@@ -131,7 +144,6 @@ export default function AdminDashboard() {
       }
       setBhattas(savedBhattas);
 
-      // NAYA: Persistent Bhatta State
       const lastActiveBhatta = localStorage.getItem("active_bhatta_id");
       if (lastActiveBhatta && savedBhattas.some((b: any) => b.id === lastActiveBhatta)) {
         setActiveBhattaId(lastActiveBhatta);
@@ -139,7 +151,6 @@ export default function AdminDashboard() {
         setActiveBhattaId(savedBhattas[0].id);
       }
 
-      // Load Labourers
       let data: any[] = getLabourData("bhatta_labourers") || [];
       let dataModified = false;
       
@@ -150,6 +161,8 @@ export default function AdminDashboard() {
           newLab.loginId = newLab.phone || Math.floor(1000 + Math.random() * 9000).toString(); 
           dataModified = true; 
         }
+        if (newLab.isDeleted === undefined) { newLab.isDeleted = false; dataModified = true; } // NAYA: Soft Delete Flag
+        
         const safeEntries = Array.isArray(newLab.entries) ? newLab.entries : [];
         newLab.entries = safeEntries.map((e: any) => ({
           ...e, kharcha: e.kharcha || 0, peshgi: e.peshgi !== undefined ? e.peshgi : (e.advance || 0), payeCount: e.payeCount || 0, isLeave: e.isLeave || false
@@ -159,8 +172,6 @@ export default function AdminDashboard() {
       
       if (dataModified) saveLabourData("bhatta_labourers", migratedData);
       setLabourers(migratedData);
-
-      // Hide Loader
       setIsLoading(false);
     };
 
@@ -182,6 +193,12 @@ export default function AdminDashboard() {
     localStorage.setItem("app_theme", newTheme);
   };
 
+  const toggleLanguage = () => {
+    const newLang = lang === "en" ? "hi" : "en";
+    setLang(newLang);
+    localStorage.setItem("app_lang", newLang);
+  };
+
   const handleBhattaChange = (bId: string) => {
     setActiveBhattaId(bId);
     localStorage.setItem("active_bhatta_id", bId);
@@ -193,56 +210,75 @@ export default function AdminDashboard() {
     router.push("/");
   };
 
-  const handleDeleteLabour = () => {
-    if (!deleteLabourId) return;
-    const updated = labourers.filter(l => l.id !== deleteLabourId);
-    setLabourers(updated);
-    saveLabourData("bhatta_labourers", updated);
-    setDeleteLabourId(null);
-    showToast("User account successfully deleted!", "success");
+  // 🟢 NAYA: Security PIN Set
+  const handleSetPin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if(newPinSetup.length !== 4) return showToast("PIN 4 digit ka hona chahiye!", "error");
+    setAdminPin(newPinSetup);
+    localStorage.setItem("bhatta_admin_pin", btoa(newPinSetup));
+    setNewPinSetup("");
+    showToast("Security PIN set ho gaya!", "success");
+  };
+
+  // 🟢 NAYA: Execute Critical Action with PIN
+  const executeSecureAction = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (adminPin && pinInput !== adminPin) {
+      return showToast(t("Incorrect Security PIN!", "सुरक्षा पिन गलत है!"), "error");
+    }
+
+    if(showPinModal?.action === "delete") {
+      const updated = labourers.map(l => l.id === showPinModal.targetId ? { ...l, isDeleted: true } : l);
+      setLabourers(updated); saveLabourData("bhatta_labourers", updated);
+      showToast(t("Moved to Recycle Bin!", "रीसायकल बिन में भेज दिया गया!"), "success");
+    } 
+    else if(showPinModal?.action === "restore") {
+      const updated = labourers.map(l => l.id === showPinModal.targetId ? { ...l, isDeleted: false } : l);
+      setLabourers(updated); saveLabourData("bhatta_labourers", updated);
+      showToast(t("Account Restored!", "अकाउंट वापस चालू हो गया!"), "success");
+    }
+    else if(showPinModal?.action === "hard_delete") {
+      const updated = labourers.filter(l => l.id !== showPinModal.targetId);
+      setLabourers(updated); saveLabourData("bhatta_labourers", updated);
+      showToast(t("Permanently Deleted!", "हमेशा के लिए डिलीट हो गया!"), "success");
+    }
+    
+    setShowPinModal(null);
+    setPinInput("");
   };
 
   const handleResetPassword = (e: React.FormEvent) => {
     e.preventDefault();
     if (!resetPasswordId || !newPasswordInput) return showToast("Password cannot be empty!", "error");
-    
     const updated = labourers.map(l => {
       if (l.id === resetPasswordId) return { ...l, password: newPasswordInput };
       return l;
     });
-    
-    setLabourers(updated);
-    saveLabourData("bhatta_labourers", updated);
-    setResetPasswordId(null);
-    setNewPasswordInput("");
-    showToast("Naya password set ho gaya!", "success");
+    setLabourers(updated); saveLabourData("bhatta_labourers", updated);
+    setResetPasswordId(null); setNewPasswordInput("");
+    showToast(t("Password changed!", "पासवर्ड बदल दिया गया!"), "success");
   };
 
   const handleAddAdmin = (e: React.FormEvent) => {
     e.preventDefault();
     if(!newAdminId) return;
     const finalId = newAdminId.toLowerCase().trim();
-    if(adminList.includes(finalId)) {
-      return showToast("Ye Admin pehle se add hai!", "error");
-    }
+    if(adminList.includes(finalId)) return showToast("Ye Admin pehle se add hai!", "error");
     const updated = [...adminList, finalId];
-    setAdminList(updated);
-    localStorage.setItem("bhatta_admins", JSON.stringify(updated));
-    setNewAdminId("");
-    showToast("Naya Admin successfully add ho gaya!", "success");
+    setAdminList(updated); localStorage.setItem("bhatta_admins", JSON.stringify(updated));
+    setNewAdminId(""); showToast("Naya Admin successfully add ho gaya!", "success");
   };
 
   const handleRemoveAdmin = (idToRemove: string) => {
-    if(idToRemove === "admin" || idToRemove === "nadeemxsalar@gmail.com") {
-      return showToast("Master Admin (Nadeem) ko delete nahi kiya ja sakta!", "error");
-    }
+    if(idToRemove === "admin" || idToRemove === "nadeemxsalar@gmail.com") return showToast("Master Admin ko delete nahi kiya ja sakta!", "error");
     const updated = adminList.filter(a => a !== idToRemove);
-    setAdminList(updated);
-    localStorage.setItem("bhatta_admins", JSON.stringify(updated));
+    setAdminList(updated); localStorage.setItem("bhatta_admins", JSON.stringify(updated));
     showToast("Admin ki power hata di gayi hai!", "success");
   };
 
-  const currentLabourers = labourers.filter(lab => lab.bhattaId === activeBhattaId);
+  // 🟢 NAYA: Filter Only Active Labourers (Not Deleted)
+  const currentLabourers = labourers.filter(lab => lab.bhattaId === activeBhattaId && !lab.isDeleted);
+  const deletedLabourers = labourers.filter(lab => lab.bhattaId === activeBhattaId && lab.isDeleted);
   const activeBhattaName = bhattas.find(b => b.id === activeBhattaId)?.name || "Bhatta";
 
   const notifications = currentLabourers.flatMap(lab => 
@@ -264,7 +300,6 @@ export default function AdminDashboard() {
     }
   };
 
-  // NAYA: Accurate Overall Stats
   const overallStats = currentLabourers.reduce((acc, lab) => {
     const stats = getStats(lab);
     acc.totalEarned += stats.earned; 
@@ -273,7 +308,6 @@ export default function AdminDashboard() {
     return acc;
   }, { totalEarned: 0, totalExpenses: 0, totalAdvance: 0 });
 
-  // NAYA: Accurate Chart Data
   const chartData = currentLabourers.map(lab => {
     const stats = getStats(lab);
     return { name: lab.name, Earned: stats.earned, Expenses: stats.kharcha, Advance: stats.peshgi };
@@ -319,7 +353,7 @@ export default function AdminDashboard() {
         if (!tempLabourersMap.has(mapKey)) {
           currentMaxId++;
           tempLabourersMap.set(mapKey, {
-            id: Date.now().toString() + Math.random().toString(), bhattaId: activeBhattaId, name: colName, loginId: currentMaxId.toString(), phone: colPhone, paya: colLocation, ratePerPaya: colRate, totalPaye: 0, totalKharcha: 0, totalPeshgi: 0, entries: []
+            id: Date.now().toString() + Math.random().toString(), bhattaId: activeBhattaId, name: colName, loginId: currentMaxId.toString(), phone: colPhone, paya: colLocation, ratePerPaya: colRate, isDeleted: false, totalPaye: 0, totalKharcha: 0, totalPeshgi: 0, entries: []
           });
         }
 
@@ -343,41 +377,69 @@ export default function AdminDashboard() {
     e.target.value = ''; 
   };
 
-  const downloadIndividualPDF = (lab: any) => {
-    const doc = new jsPDF();
-    const stats = getStats(lab);
-
-    doc.setFontSize(22); doc.setTextColor(30, 64, 175); doc.text(`${activeBhattaName} - Hisaab Parchi`, 14, 20);
-    doc.setFontSize(12); doc.setTextColor(0, 0, 0); doc.text(`Labour Name: ${lab.name}`, 14, 32); doc.text(`Login ID: ${lab.loginId}`, 14, 40); doc.text(`Mobile: ${lab.phone || "-"}`, 14, 48); doc.text(`Location: ${lab.paya || "-"}`, 14, 56);
-    
-    doc.text(`Total Kamai: Rs ${stats.earned.toLocaleString()}`, 120, 32); doc.text(`Total Kharcha: Rs ${stats.kharcha.toLocaleString()}`, 120, 40); doc.text(`Total Peshgi: Rs ${stats.peshgi.toLocaleString()}`, 120, 48);
-    
-    doc.setFont("helvetica", "bold");
-    if(stats.netBalance < 0) { doc.setTextColor(220, 38, 38); doc.text(`Final Balance: Rs ${Math.abs(stats.netBalance).toLocaleString()} (Aap par hai)`, 120, 56); } 
-    else { doc.setTextColor(16, 185, 129); doc.text(`Final Balance: Rs ${stats.netBalance.toLocaleString()} (Aapko lene hain)`, 120, 56); }
-
-    const tableData = (lab.entries || []).filter((e:any) => e.payeCount > 0 || e.kharcha > 0 || e.peshgi !== 0 || e.remark || e.isLeave).map((e:any) => [
-        e.date, e.isLeave ? "LEAVE" : (e.payeCount || 0), e.isLeave ? "-" : ((e.payeCount || 0) * (e.customRatePerPaya !== undefined ? e.customRatePerPaya : (lab.ratePerPaya || 0))), e.kharcha || 0, e.peshgi || 0, e.remark || "-"
-      ]);
-
-    autoTable(doc, { startY: 65, head: [['Date', 'Paye', 'Earned', 'Kharcha', 'Peshgi', 'Remark']], body: tableData, theme: 'grid', headStyles: { fillColor: [30, 64, 175] } });
-    doc.save(`${lab.name}_Parchi.pdf`); showToast(`${lab.name} ki Parchi Download ho gayi!`, "success");
+  // 🟢 NAYA: Offline Backup Download
+  const handleExportBackup = () => {
+    const dataStr = JSON.stringify(labourers, null, 2);
+    const blob = new Blob([dataStr], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `Bhatta_Database_Backup_${new Date().toISOString().split("T")[0]}.json`;
+    link.click();
+    showToast(t("Database Exported Successfully!", "डेटाबेस बैकअप हो गया!"), "success");
   };
 
+  // 🟢 NAYA: Professional PDF Update for Master Summary
   const downloadAllSummaryPDF = () => {
     if(currentLabourers.length === 0) return showToast("Koi data nahi hai!", "error");
     const doc = new jsPDF();
-    doc.setFontSize(22); doc.setTextColor(30, 64, 175); doc.text(`${activeBhattaName} - All Labour Summary`, 14, 20);
-    doc.setFontSize(11); doc.setTextColor(0, 0, 0); doc.text(`Total Kamai: Rs ${overallStats.totalEarned.toLocaleString()}`, 14, 30); doc.text(`Total Kharcha: Rs ${overallStats.totalExpenses.toLocaleString()}`, 80, 30); doc.text(`Total Advance: Rs ${overallStats.totalAdvance.toLocaleString()}`, 150, 30);
+    
+    // Watermark
+    doc.setTextColor(230, 230, 230);
+    doc.setFontSize(60);
+    doc.text("BHATTA PRO", 40, 150, { angle: 45 });
+
+    doc.setFontSize(22); 
+    doc.setTextColor(30, 64, 175); 
+    doc.setFont("helvetica", "bold");
+    doc.text(`${activeBhattaName} - Master Summary`, 14, 20);
+    
+    doc.setFontSize(10); 
+    doc.setTextColor(100, 100, 100); 
+    doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 26);
+
+    doc.setFontSize(11); 
+    doc.setTextColor(0, 0, 0); 
+    doc.text(`Total Earned: Rs ${overallStats.totalEarned.toLocaleString()}`, 14, 35); 
+    doc.text(`Total Kharcha: Rs ${overallStats.totalExpenses.toLocaleString()}`, 80, 35); 
+    doc.text(`Total Advance: Rs ${overallStats.totalAdvance.toLocaleString()}`, 150, 35);
 
     const tableData = currentLabourers.map(lab => {
       const stats = getStats(lab);
       const netText = stats.netBalance < 0 ? `-${Math.abs(stats.netBalance)} (Len)` : `${stats.netBalance} (Den)`;
-      return [lab.name, lab.loginId, stats.earned, stats.kharcha, stats.peshgi, netText];
+      return [lab.name, lab.loginId, stats.earned.toLocaleString(), stats.kharcha.toLocaleString(), stats.peshgi.toLocaleString(), netText];
     });
 
-    autoTable(doc, { startY: 38, head: [['Name', 'ID', 'Earned', 'Kharcha', 'Peshgi', 'Net Balance']], body: tableData, theme: 'grid', headStyles: { fillColor: [15, 23, 42] } });
-    doc.save(`${activeBhattaName}_Full_Summary.pdf`); showToast("Summary PDF Download ho gayi!", "success");
+    autoTable(doc, { 
+      startY: 45, 
+      head: [['Name', 'ID', 'Earned (Rs)', 'Kharcha (Rs)', 'Peshgi (Rs)', 'Net Balance']], 
+      body: tableData, 
+      theme: 'grid', 
+      headStyles: { fillColor: [15, 23, 42], textColor: 255, fontStyle: 'bold' },
+      styles: { fontSize: 9 },
+      alternateRowStyles: { fillColor: [245, 247, 250] }
+    });
+
+    // Signature Area
+    const finalY = (doc as any).lastAutoTable.finalY + 30;
+    doc.setFontSize(12);
+    doc.setTextColor(0, 0, 0);
+    doc.text("Authorized Signature", 150, finalY);
+    doc.setLineWidth(0.5);
+    doc.line(140, finalY - 5, 190, finalY - 5);
+
+    doc.save(`${activeBhattaName}_Professional_Summary.pdf`); 
+    showToast(t("Summary PDF Downloaded!", "समरी पीडीएफ डाउनलोड हो गई!"), "success");
   };
 
   const handleAddBhatta = (e: React.FormEvent) => {
@@ -402,15 +464,15 @@ export default function AdminDashboard() {
       return showToast("Ye Labour ID pehle se kisi aur ki hai!", "error");
     }
 
-    const newLabour: any = { id: Date.now().toString(), bhattaId: activeBhattaId, name, loginId: finalLoginId, phone, ratePerThousand: 0, ratePerPaya: Number(ratePaya) || 0, paya: paya || "-", totalBricks: 0, totalPaye: 0, totalKharcha: 0, totalPeshgi: 0, entries: [] };
+    const newLabour: any = { id: Date.now().toString(), bhattaId: activeBhattaId, name, loginId: finalLoginId, phone, ratePerThousand: 0, ratePerPaya: Number(ratePaya) || 0, paya: paya || "-", isDeleted: false, totalBricks: 0, totalPaye: 0, totalKharcha: 0, totalPeshgi: 0, entries: [] };
     const updatedList = [...labourers, newLabour];
     setLabourers(updatedList); saveLabourData("bhatta_labourers", updatedList);
-    setName(""); setPhone(""); setRatePaya(""); setPaya(""); showToast("Naya labour add ho gaya!", "success");
+    setName(""); setPhone(""); setRatePaya(""); setPaya(""); showToast(t("Labour Added!", "मजदूर जोड़ दिया गया!"), "success");
   };
 
   const handleAddWork = (e: React.FormEvent) => {
     e.preventDefault();
-    if (selectedLabourIds.length === 0) return showToast("Kripya kam se kam ek labour select karein!", "error");
+    if (selectedLabourIds.length === 0) return showToast(t("Select at least one labour!", "कम से कम एक मजदूर चुनें!"), "error");
     const paye = Number(payeAmount) || 0;
     if (paye === 0) return showToast("Please enter Paye count!", "error");
 
@@ -429,7 +491,7 @@ export default function AdminDashboard() {
       updatedLabourers[labourIndex] = { ...selectedLabour, entries: updatedEntries };
     });
     setLabourers(updatedLabourers); saveLabourData("bhatta_labourers", updatedLabourers);
-    setPayeAmount(""); setSelectedLabourIds([]); showToast("Work entry successfully chadh gayi!", "success");
+    setPayeAmount(""); setSelectedLabourIds([]); showToast(t("Work entry added!", "काम सफलतापूर्वक दर्ज हुआ!"), "success");
   };
 
   const handleAddBulkLeave = (e: React.FormEvent) => {
@@ -467,7 +529,7 @@ export default function AdminDashboard() {
       return lab;
     });
     setLabourers(updatedLabourers); saveLabourData("bhatta_labourers", updatedLabourers);
-    setKharchaAmount(""); setKharchaLabourId(""); showToast("Kharcha add ho gaya!", "success");
+    setKharchaAmount(""); setKharchaLabourId(""); showToast(t("Expense added!", "खर्चा दर्ज हो गया!"), "success");
   };
 
   const handleAddBulkKharcha = (e: React.FormEvent) => {
@@ -513,7 +575,7 @@ export default function AdminDashboard() {
       return lab;
     });
     setLabourers(updatedLabourers); saveLabourData("bhatta_labourers", updatedLabourers);
-    setPeshgiAmount(""); setPeshgiLabourId(""); showToast(`Peshgi successfully ${peshgiType === 'add' ? 'Add' : 'Jama'} ho gayi!`, "success");
+    setPeshgiAmount(""); setPeshgiLabourId(""); showToast(t(`Advance ${peshgiType === 'add' ? 'Added' : 'Returned'}!`, `पेशगी सफलतापूर्वक ${peshgiType === 'add' ? 'जोड़ी' : 'जमा'} हो गई!`), "success");
   };
 
   const handleSaveLabourEdit = (id: string) => {
@@ -524,10 +586,10 @@ export default function AdminDashboard() {
       return lab;
     });
     setLabourers(updatedLabourers); saveLabourData("bhatta_labourers", updatedLabourers);
-    setEditingLabourId(null); setEditLabourData(null); showToast("Details update ho gayi!", "success");
+    setEditingLabourId(null); setEditLabourData(null); showToast(t("Details Updated!", "विवरण अपडेट हो गया!"), "success");
   };
 
-  const changeTab = (tab: "dashboard" | "eent" | "kharcha" | "peshgi" | "manage" | "download" | "role") => { setActiveTab(tab); setIsSidebarOpen(false); };
+  const changeTab = (tab: "dashboard" | "eent" | "kharcha" | "peshgi" | "manage" | "download" | "role" | "recycle") => { setActiveTab(tab); setIsSidebarOpen(false); };
 
   const filteredDashboard = currentLabourers.filter(l => l.name.toLowerCase().includes(searchDashboard.toLowerCase()) || (l.loginId && l.loginId.includes(searchDashboard)));
   const filteredManage = currentLabourers.filter(l => l.name.toLowerCase().includes(searchManage.toLowerCase()) || (l.loginId && l.loginId.includes(searchManage)));
@@ -536,7 +598,6 @@ export default function AdminDashboard() {
   const filteredPeshgi = currentLabourers.filter(l => l.name.toLowerCase().includes(searchPeshgi.toLowerCase()));
   const filteredDownload = currentLabourers.filter(l => l.name.toLowerCase().includes(searchDownload.toLowerCase()) || (l.loginId && l.loginId.includes(searchDownload)));
 
-  // Theme Constants
   const isDark = theme === "dark";
   const bgMain = isDark ? "bg-[#0f172a] text-white" : "bg-slate-50 text-slate-900";
   const navBg = isDark ? "bg-[#0f172a]/90 border-slate-700/50" : "bg-white/90 border-slate-200 shadow-sm";
@@ -550,7 +611,6 @@ export default function AdminDashboard() {
   const tableRowHover = isDark ? "hover:bg-slate-800/40" : "hover:bg-slate-50";
   const modalInner = isDark ? "bg-slate-950 border-slate-700" : "bg-slate-50 border-slate-200";
 
-  // NAYA: Loader UI
   if (isLoading) {
     return (
       <div className={`min-h-screen flex flex-col items-center justify-center transition-colors duration-500 ${bgMain}`}>
@@ -577,15 +637,40 @@ export default function AdminDashboard() {
         </div>
       )}
 
+      {/* ===================== SECURITY PIN MODAL ===================== */}
+      {showPinModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-[150] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className={`w-full max-w-sm p-6 rounded-2xl shadow-2xl relative border text-center ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
+            <button onClick={() => {setShowPinModal(null); setPinInput("");}} className={`absolute top-4 right-4 p-1.5 rounded-lg ${isDark ? 'text-slate-400 hover:text-white bg-slate-800' : 'text-slate-500 hover:text-slate-800 bg-slate-100'}`}><X size={18} /></button>
+            <div className="w-14 h-14 bg-rose-500/20 text-rose-500 rounded-full flex items-center justify-center mx-auto mb-4"><LockKeyhole size={28}/></div>
+            <h2 className={`text-xl font-bold mb-2 ${textMain}`}>{t("Security PIN Required", "सुरक्षा पिन दर्ज करें")}</h2>
+            <p className={`text-sm mb-6 ${textMuted}`}>
+              {showPinModal.action === "hard_delete" ? "Kripya verify karein ki aap hi Admin hain." : "Kripya verify karein ki aap hi Admin hain."}
+            </p>
+            <form onSubmit={executeSecureAction}>
+              {adminPin ? (
+                <>
+                  <input type="password" maxLength={4} value={pinInput} onChange={(e) => setPinInput(e.target.value)} placeholder="****" required autoFocus className={`w-full text-center tracking-[1em] text-2xl rounded-xl px-4 py-3 outline-none font-bold transition-all border mb-4 ${inputBg}`} />
+                  <button type="submit" className="w-full py-3 bg-rose-600 hover:bg-rose-500 text-white rounded-xl font-bold transition-all shadow-md active:scale-95 flex items-center justify-center gap-2"><Check size={18}/> Confirm Action</button>
+                </>
+              ) : (
+                <div className="text-sm text-rose-500 font-medium mb-4">
+                  Aapne abhi tak Security PIN set nahi kiya hai. Pehle 'Manage' tab se PIN set karein.
+                </div>
+              )}
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* ===================== PASSWORD RESET MODAL ===================== */}
       {resetPasswordId && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[150] flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className={`w-full max-w-sm p-6 rounded-2xl shadow-2xl relative border ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
             <button onClick={() => setResetPasswordId(null)} className={`absolute top-4 right-4 p-1.5 rounded-lg ${isDark ? 'text-slate-400 hover:text-white bg-slate-800' : 'text-slate-500 hover:text-slate-800 bg-slate-100'}`}><X size={18} /></button>
             <div className="flex flex-col items-center text-center mb-6">
-              <div className="w-12 h-12 bg-blue-500/20 text-blue-500 rounded-full flex items-center justify-center mb-3"><LockKeyhole size={24}/></div>
-              <h2 className={`text-xl font-bold ${textMain}`}>Create New Password</h2>
-              <p className={`text-xs mt-1 ${textMuted}`}>Enter a new password for this user.</p>
+              <div className="w-12 h-12 bg-blue-500/20 text-blue-500 rounded-full flex items-center justify-center mb-3"><Key size={24}/></div>
+              <h2 className={`text-xl font-bold ${textMain}`}>{t("Create New Password", "नया पासवर्ड बनाएं")}</h2>
             </div>
             <form onSubmit={handleResetPassword} className="space-y-4">
               <div>
@@ -599,36 +684,20 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* ===================== DELETE CONFIRMATION MODAL ===================== */}
-      {deleteLabourId && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[150] flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className={`w-full max-w-sm p-6 rounded-2xl shadow-2xl relative border text-center ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
-            <div className="w-16 h-16 bg-rose-500/20 text-rose-500 rounded-full flex items-center justify-center mx-auto mb-4"><AlertCircle size={32}/></div>
-            <h2 className={`text-xl font-bold mb-2 ${textMain}`}>Delete this account?</h2>
-            <p className={`text-sm mb-6 ${textMuted}`}>Ye action wapas nahi ho sakta. User ka saara hisaab aur entries delete ho jayengi.</p>
-            <div className="flex gap-3">
-              <button onClick={() => setDeleteLabourId(null)} className={`flex-1 py-3 rounded-xl font-bold transition-all ${isDark ? 'bg-slate-800 text-white hover:bg-slate-700' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>Cancel</button>
-              <button onClick={handleDeleteLabour} className="flex-1 py-3 bg-rose-600 hover:bg-rose-500 text-white rounded-xl font-bold transition-all shadow-md active:scale-95 flex items-center justify-center gap-2"><Trash2 size={18}/> Delete</button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {showImportModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className={`w-full max-w-lg p-6 shadow-2xl relative rounded-2xl border ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
             <button onClick={() => setShowImportModal(false)} className={`absolute top-4 right-4 transition-colors p-1.5 rounded-lg ${isDark ? 'text-slate-400 hover:text-white bg-slate-800' : 'text-slate-500 hover:text-slate-800 bg-slate-100'}`}><X size={20} /></button>
             <h2 className="text-xl font-bold text-emerald-500 mb-2 flex items-center gap-2"><FileSpreadsheet size={24} /> Smart Import Labour Data</h2>
-            <p className={`text-sm mb-5 ${textMuted}`}>Nayi CSV file mein aap poora hisaab ek sath daal sakte hain. <span className={`font-semibold ${textMain}`}>Khali field automatically zero ho jayegi.</span></p>
+            <p className={`text-sm mb-5 ${textMuted}`}>Nayi CSV file mein aap poora hisaab ek sath daal sakte hain.</p>
             <div className={`rounded-xl p-4 border mb-6 overflow-x-auto shadow-inner ${modalInner}`}>
               <p className="text-xs font-bold tracking-widest text-slate-500 uppercase mb-3">Format Columns (Must match exactly)</p>
               <table className="w-full text-left text-[10px] md:text-xs whitespace-nowrap">
                 <thead><tr className={`border-b ${isDark ? 'text-slate-300 border-slate-800' : 'text-slate-700 border-slate-300'}`}>
-                  <th className="pb-2 pr-3 font-semibold text-blue-500">Name*</th><th className="pb-2 pr-3 font-semibold">Mobile</th><th className="pb-2 pr-3 font-semibold">Location</th><th className="pb-2 pr-3 font-semibold text-emerald-500">Rate</th><th className="pb-2 pr-3 font-semibold text-rose-500">Date (YYYY-MM-DD)</th><th className="pb-2 pr-3 font-semibold">Paye</th><th className="pb-2 pr-3 font-semibold">Kharcha</th><th className="pb-2 pr-3 font-semibold">Peshgi</th><th className="pb-2 font-semibold">Remark</th>
+                  <th className="pb-2 pr-3 font-semibold text-blue-500">Name*</th><th className="pb-2 pr-3 font-semibold">Mobile</th><th className="pb-2 pr-3 font-semibold">Location</th><th className="pb-2 pr-3 font-semibold text-emerald-500">Rate</th><th className="pb-2 pr-3 font-semibold text-rose-500">Date</th><th className="pb-2 pr-3 font-semibold">Paye</th><th className="pb-2 pr-3 font-semibold">Kharcha</th><th className="pb-2 pr-3 font-semibold">Peshgi</th><th className="pb-2 font-semibold">Remark</th>
                 </tr></thead>
                 <tbody className={`font-mono ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                   <tr><td className={`pt-2 pr-3 ${textMain}`}>Ramu</td><td className="pt-2 pr-3">987...</td><td className="pt-2 pr-3">L1</td><td className={`pt-2 pr-3 ${textMain}`}>35</td><td className="pt-2 pr-3">2026-08-25</td><td className="pt-2 pr-3 text-emerald-500">500</td><td className="pt-2 pr-3">100</td><td className="pt-2 pr-3">0</td><td className="pt-2">Late</td></tr>
-                  <tr><td className={`pt-1 pr-3 ${textMain}`}>Ramu</td><td className="pt-1 pr-3">987...</td><td className="pt-1 pr-3">L1</td><td className={`pt-1 pr-3 ${textMain}`}>35</td><td className="pt-1 pr-3">2026-08-26</td><td className="pt-1 pr-3 text-emerald-500">0</td><td className="pt-1 pr-3">0</td><td className="pt-1 pr-3 text-rose-500">2000</td><td className="pt-1">Advance</td></tr>
                 </tbody>
               </table>
             </div>
@@ -650,7 +719,10 @@ export default function AdminDashboard() {
         </div>
         <div className="flex items-center gap-2 md:gap-3">
           
-          {/* NAYA: Mobile Par Sahi Dikhne Wala Notification Dropdown */}
+          <button onClick={toggleLanguage} className={`p-2 rounded-full transition-colors font-bold text-xs flex items-center gap-1 ${isDark ? 'bg-slate-800 text-cyan-400 hover:bg-slate-700' : 'bg-slate-100 text-cyan-600 shadow-sm hover:bg-slate-200'}`}>
+            <Globe size={16} /> {lang === "en" ? "HI" : "EN"}
+          </button>
+
           <div className="relative">
             <button onClick={toggleNotifications} className={`p-2 rounded-full transition-colors relative ${isDark ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-100 text-slate-600'}`}>
               <Bell size={20} />
@@ -667,11 +739,7 @@ export default function AdminDashboard() {
                 ) : (
                   <div className="space-y-1">
                     {notifications.map(notif => (
-                      <div 
-                        key={notif.id} 
-                        onClick={() => { router.push(`/labour/${notif.labId}`); setShowNotifications(false); }}
-                        className={`p-3 rounded-lg flex flex-col gap-1 transition-colors cursor-pointer ${isDark ? 'hover:bg-slate-800' : 'hover:bg-slate-50'}`}
-                      >
+                      <div key={notif.id} onClick={() => { router.push(`/labour/${notif.labId}`); setShowNotifications(false); }} className={`p-3 rounded-lg flex flex-col gap-1 transition-colors cursor-pointer ${isDark ? 'hover:bg-slate-800' : 'hover:bg-slate-50'}`}>
                         <div className="flex justify-between items-start">
                           <span className={`text-xs font-bold ${textMain} hover:text-blue-500 transition-colors`}>{notif.labName}</span>
                           <span className={`text-[10px] ${textMuted}`}>{notif.date}</span>
@@ -696,24 +764,25 @@ export default function AdminDashboard() {
 
       <div className={`fixed top-0 left-0 h-full w-72 border-r z-40 transform transition-transform duration-300 ease-in-out flex flex-col ${sideBg} ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className={`flex items-center justify-between p-4 border-b ${isDark ? 'border-slate-700/50' : 'border-slate-200'}`}>
-          <h2 className={`text-xl font-bold ${textMain}`}>Admin Menu</h2>
+          <h2 className={`text-xl font-bold ${textMain}`}>{t("Admin Menu", "व्यवस्थापक मेनू")}</h2>
           <button onClick={() => setIsSidebarOpen(false)} className={`p-2 rounded-xl ${isDark ? 'hover:bg-slate-700 text-slate-300' : 'hover:bg-slate-100 text-slate-600'}`}><X size={24} /></button>
         </div>
         
         <div className="p-4 space-y-2 flex-1 overflow-y-auto custom-scrollbar">
-          <button onClick={() => changeTab("dashboard")} className={`w-full flex items-center gap-3 p-3 rounded-xl transition font-medium ${activeTab === "dashboard" ? "bg-blue-600 text-white shadow-lg shadow-blue-500/30" : (isDark ? "hover:bg-slate-800 text-slate-300" : "hover:bg-slate-100 text-slate-600")}`}><LayoutDashboard size={20} /> Dashboard</button>
-          <button onClick={() => changeTab("manage")} className={`w-full flex items-center gap-3 p-3 rounded-xl transition font-medium ${activeTab === "manage" ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/30" : (isDark ? "hover:bg-slate-800 text-slate-300" : "hover:bg-slate-100 text-slate-600")}`}><Settings size={20} /> Manage & Control</button>
-          <button onClick={() => changeTab("eent")} className={`w-full flex items-center gap-3 p-3 rounded-xl transition font-medium ${activeTab === "eent" ? "bg-emerald-600 text-white shadow-lg shadow-emerald-500/30" : (isDark ? "hover:bg-slate-800 text-slate-300" : "hover:bg-slate-100 text-slate-600")}`}><Layers size={20} /> Work Entry</button>
-          <button onClick={() => changeTab("kharcha")} className={`w-full flex items-center gap-3 p-3 rounded-xl transition font-medium ${activeTab === "kharcha" ? "bg-orange-600 text-white shadow-lg shadow-orange-500/30" : (isDark ? "hover:bg-slate-800 text-slate-300" : "hover:bg-slate-100 text-slate-600")}`}><Wallet size={20} /> Expenses</button>
-          <button onClick={() => changeTab("peshgi")} className={`w-full flex items-center gap-3 p-3 rounded-xl transition font-medium ${activeTab === "peshgi" ? "bg-rose-600 text-white shadow-lg shadow-rose-500/30" : (isDark ? "hover:bg-slate-800 text-slate-300" : "hover:bg-slate-100 text-slate-600")}`}><IndianRupee size={20} /> Advance (Peshgi)</button>
-          <button onClick={() => changeTab("download")} className={`w-full flex items-center gap-3 p-3 rounded-xl transition mt-4 border font-medium ${activeTab === "download" ? "bg-cyan-600 text-white border-transparent shadow-lg shadow-cyan-500/30" : (isDark ? "border-cyan-500/20 hover:bg-slate-800 text-cyan-400" : "border-cyan-200 hover:bg-cyan-50 text-cyan-600")}`}><FileDown size={20} /> Download Receipt</button>
+          <button onClick={() => changeTab("dashboard")} className={`w-full flex items-center gap-3 p-3 rounded-xl transition font-medium ${activeTab === "dashboard" ? "bg-blue-600 text-white shadow-lg shadow-blue-500/30" : (isDark ? "hover:bg-slate-800 text-slate-300" : "hover:bg-slate-100 text-slate-600")}`}><LayoutDashboard size={20} /> {t("Dashboard", "डैशबोर्ड")}</button>
+          <button onClick={() => changeTab("manage")} className={`w-full flex items-center gap-3 p-3 rounded-xl transition font-medium ${activeTab === "manage" ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/30" : (isDark ? "hover:bg-slate-800 text-slate-300" : "hover:bg-slate-100 text-slate-600")}`}><Settings size={20} /> {t("Manage & Control", "नियंत्रण")}</button>
+          <button onClick={() => changeTab("eent")} className={`w-full flex items-center gap-3 p-3 rounded-xl transition font-medium ${activeTab === "eent" ? "bg-emerald-600 text-white shadow-lg shadow-emerald-500/30" : (isDark ? "hover:bg-slate-800 text-slate-300" : "hover:bg-slate-100 text-slate-600")}`}><Layers size={20} /> {t("Work Entry", "काम दर्ज करें")}</button>
+          <button onClick={() => changeTab("kharcha")} className={`w-full flex items-center gap-3 p-3 rounded-xl transition font-medium ${activeTab === "kharcha" ? "bg-orange-600 text-white shadow-lg shadow-orange-500/30" : (isDark ? "hover:bg-slate-800 text-slate-300" : "hover:bg-slate-100 text-slate-600")}`}><Wallet size={20} /> {t("Expenses", "खर्चा")}</button>
+          <button onClick={() => changeTab("peshgi")} className={`w-full flex items-center gap-3 p-3 rounded-xl transition font-medium ${activeTab === "peshgi" ? "bg-rose-600 text-white shadow-lg shadow-rose-500/30" : (isDark ? "hover:bg-slate-800 text-slate-300" : "hover:bg-slate-100 text-slate-600")}`}><IndianRupee size={20} /> {t("Advance (Peshgi)", "पेशगी")}</button>
+          <button onClick={() => changeTab("download")} className={`w-full flex items-center gap-3 p-3 rounded-xl transition mt-4 border font-medium ${activeTab === "download" ? "bg-cyan-600 text-white border-transparent shadow-lg shadow-cyan-500/30" : (isDark ? "border-cyan-500/20 hover:bg-slate-800 text-cyan-400" : "border-cyan-200 hover:bg-cyan-50 text-cyan-600")}`}><FileDown size={20} /> {t("Download Receipt", "रसीद डाउनलोड")}</button>
           
           <div className={`h-px w-full my-4 ${isDark ? 'bg-slate-700/50' : 'bg-slate-200'}`}></div>
           <button onClick={() => changeTab("role")} className={`w-full flex items-center gap-3 p-3 rounded-xl transition font-medium ${activeTab === "role" ? "bg-violet-600 text-white shadow-lg shadow-violet-500/30" : (isDark ? "hover:bg-slate-800 text-violet-400" : "hover:bg-violet-50 text-violet-600")}`}><ShieldAlert size={20} /> Give Power (Admins)</button>
+          <button onClick={() => changeTab("recycle")} className={`w-full flex items-center gap-3 p-3 rounded-xl transition font-medium ${activeTab === "recycle" ? "bg-slate-600 text-white shadow-lg" : (isDark ? "hover:bg-slate-800 text-slate-400" : "hover:bg-slate-100 text-slate-500")}`}><Trash size={20} /> {t("Recycle Bin", "रीसायकल बिन")}</button>
         </div>
 
         <div className={`p-4 border-t ${isDark ? 'border-slate-700/50 bg-slate-900/50' : 'border-slate-200 bg-slate-50'}`}>
-          <h3 className={`text-xs font-semibold uppercase tracking-wider mb-3 flex items-center gap-2 ${textMuted}`}><Building2 size={14}/> Work Sites</h3>
+          <h3 className={`text-xs font-semibold uppercase tracking-wider mb-3 flex items-center gap-2 ${textMuted}`}><Building2 size={14}/> {t("Work Sites", "साइट्स")}</h3>
           <div className="space-y-2 max-h-40 overflow-y-auto mb-3 pr-2 custom-scrollbar">
             {bhattas.map(b => (
               <button key={b.id} onClick={() => handleBhattaChange(b.id)} className={`w-full text-left px-3 py-2 rounded-lg text-sm transition border ${activeBhattaId === b.id ? (isDark ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-400' : 'bg-emerald-50 border-emerald-200 text-emerald-600 font-bold') : (isDark ? 'border-transparent hover:bg-slate-700 text-slate-300' : 'border-transparent hover:bg-slate-100 text-slate-600')}`}>{b.name}</button>
@@ -738,15 +807,15 @@ export default function AdminDashboard() {
           <div className="space-y-6 animate-in fade-in duration-300">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className={`p-5 rounded-2xl transition-all ${isDark ? 'bg-gradient-to-br from-cyan-900/40 to-slate-900 border border-cyan-500/30 shadow-lg' : 'bg-cyan-50 border border-cyan-200 shadow-sm'}`}>
-                <p className={`text-xs font-semibold uppercase tracking-wider mb-1 ${isDark ? 'text-cyan-300' : 'text-cyan-600'}`}>Total Bhatta Earnings</p>
+                <p className={`text-xs font-semibold uppercase tracking-wider mb-1 ${isDark ? 'text-cyan-300' : 'text-cyan-600'}`}>{t("Total Bhatta Earnings", "कुल भट्ठा कमाई")}</p>
                 <h3 className={`text-3xl font-extrabold ${isDark ? 'text-cyan-400' : 'text-cyan-700'}`}>₹{overallStats.totalEarned.toLocaleString()}</h3>
               </div>
               <div className={`p-5 rounded-2xl transition-all ${isDark ? 'bg-gradient-to-br from-orange-900/40 to-slate-900 border border-orange-500/30 shadow-lg' : 'bg-orange-50 border border-orange-200 shadow-sm'}`}>
-                <p className={`text-xs font-semibold uppercase tracking-wider mb-1 ${isDark ? 'text-orange-300' : 'text-orange-600'}`}>Total Kharcha Given</p>
+                <p className={`text-xs font-semibold uppercase tracking-wider mb-1 ${isDark ? 'text-orange-300' : 'text-orange-600'}`}>{t("Total Kharcha Given", "कुल दिया गया खर्चा")}</p>
                 <h3 className={`text-3xl font-extrabold ${isDark ? 'text-orange-400' : 'text-orange-700'}`}>₹{overallStats.totalExpenses.toLocaleString()}</h3>
               </div>
               <div className={`p-5 rounded-2xl transition-all ${isDark ? 'bg-gradient-to-br from-rose-900/40 to-slate-900 border border-rose-500/30 shadow-lg' : 'bg-rose-50 border border-rose-200 shadow-sm'}`}>
-                <p className={`text-xs font-semibold uppercase tracking-wider mb-1 ${isDark ? 'text-rose-300' : 'text-rose-600'}`}>Total Market Advance</p>
+                <p className={`text-xs font-semibold uppercase tracking-wider mb-1 ${isDark ? 'text-rose-300' : 'text-rose-600'}`}>{t("Total Market Advance", "कुल पेशगी")}</p>
                 <h3 className={`text-3xl font-extrabold ${isDark ? 'text-rose-400' : 'text-rose-700'}`}>₹{overallStats.totalAdvance.toLocaleString()}</h3>
               </div>
             </div>
@@ -760,7 +829,7 @@ export default function AdminDashboard() {
 
             <div className={`backdrop-blur-xl border rounded-2xl p-6 transition-all ${cardBg}`}>
               <div className={`flex justify-between items-center mb-4 border-b pb-4 ${isDark ? 'border-slate-700/50' : 'border-slate-200'}`}>
-                <h2 className={`text-lg font-bold flex items-center gap-2 ${textMain}`}><Users size={20} className="text-blue-500"/> Add New Labour ({activeBhattaName})</h2>
+                <h2 className={`text-lg font-bold flex items-center gap-2 ${textMain}`}><Users size={20} className="text-blue-500"/> {t("Add New Labour", "नया मजदूर जोड़ें")} ({activeBhattaName})</h2>
                 <button onClick={() => setShowImportModal(true)} className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-all shadow-lg active:scale-95"><Upload size={16} /> Import CSV</button>
               </div>
 
@@ -770,7 +839,7 @@ export default function AdminDashboard() {
                 <div><label className={`block text-xs font-bold mb-1 ${textMuted}`}>Mobile</label><input type="text" value={phone} onChange={(e) => setPhone(e.target.value)} className={`w-full rounded-lg px-3 py-2 outline-none transition-all border ${inputBg}`} placeholder="Number" /></div>
                 <div><label className={`block text-xs font-bold mb-1 ${textMuted}`}>Location</label><input type="text" value={paya} onChange={(e) => setPaya(e.target.value)} className={`w-full rounded-lg px-3 py-2 outline-none transition-all border ${inputBg}`} placeholder="e.g. Line 1" /></div>
                 <div><label className="block text-xs font-extrabold text-emerald-500 mb-1">Rate (/Paye)</label><input type="number" value={ratePaya} onChange={(e) => setRatePaya(e.target.value)} className={`w-full rounded-lg px-3 py-2 outline-none font-bold transition-all border ${isDark ? 'bg-slate-900/50 border-emerald-500/50 focus:border-emerald-400 text-emerald-300' : 'bg-emerald-50 border-emerald-200 focus:border-emerald-400 text-emerald-700'}`} placeholder="e.g. 35" required/></div>
-                <button type="submit" className="w-full py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold transition shadow-md md:col-span-1 sm:col-span-2 text-sm active:scale-95">Add Labour</button>
+                <button type="submit" className="w-full py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold transition shadow-md md:col-span-1 sm:col-span-2 text-sm active:scale-95">{t("Add", "जोड़ें")}</button>
               </form>
             </div>
 
@@ -783,9 +852,7 @@ export default function AdminDashboard() {
               <div className="space-y-4">
                 {filteredDashboard.length === 0 && <p className={`text-center py-4 font-medium ${textMuted}`}>No results found.</p>}
                 {filteredDashboard.map((lab) => {
-                  // NAYA: Accurate Stats for each Labour
                   const stats = getStats(lab);
-
                   return (
                     <div key={lab.id} className={`p-4 rounded-xl border flex flex-col lg:flex-row justify-between items-center gap-4 transition-all ${isDark ? 'bg-slate-900/40 border-slate-700/50 hover:bg-slate-800/60' : 'bg-slate-50 border-slate-200 hover:bg-white hover:shadow-md'}`}>
                       <div className="flex-1 w-full text-left"><h3 className={`font-extrabold text-xl ${textMain}`}>{lab.name}</h3><p className={`text-sm mt-1 ${textMuted}`}>ID: <span className="text-blue-500 font-bold">{lab.loginId}</span> | {lab.phone}</p></div>
@@ -805,7 +872,7 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* ===================== DOWNLOAD RECEIPT TAB ===================== */}
+        {/* ===================== DOWNLOAD RECEIPT TAB (Professional PDF) ===================== */}
         {activeTab === "download" && (
           <div className="space-y-6 animate-in fade-in duration-300">
             <div className={`border rounded-2xl p-8 shadow-xl text-center transition-all ${isDark ? 'bg-gradient-to-br from-cyan-900/30 to-slate-800/80 border-cyan-500/30' : 'bg-gradient-to-br from-cyan-50 to-white border-cyan-200'}`}>
@@ -819,39 +886,38 @@ export default function AdminDashboard() {
                 <Download size={20}/> Download Summary PDF
               </button>
             </div>
-
-            <div className={`backdrop-blur-xl border rounded-2xl p-6 shadow-xl transition-all ${cardBg}`}>
-              <div className={`flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 pb-4 border-b ${isDark ? 'border-slate-700/50' : 'border-slate-200'}`}>
-                <h2 className={`text-xl font-extrabold flex items-center gap-2 ${textMain}`}>
-                  <FileText size={24} className="text-emerald-500" /> Individual Labour Parchi
-                </h2>
-                <div className="relative">
-                  <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" />
-                  <input type="text" placeholder="Search Labour Name or ID..." value={searchDownload} onChange={(e) => setSearchDownload(e.target.value)} className={`pl-9 pr-4 py-2 rounded-lg text-sm outline-none w-full md:w-64 transition-all border ${inputBg}`} />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {filteredDownload.length === 0 && <p className={`col-span-3 text-center py-4 font-medium ${textMuted}`}>No results found.</p>}
-                {filteredDownload.map(lab => (
-                  <div key={lab.id} className={`p-4 rounded-xl border flex items-center justify-between group transition-all ${isDark ? 'bg-slate-900/60 border-slate-700/60 hover:border-cyan-500/40' : 'bg-slate-50 border-slate-200 hover:border-cyan-400 hover:shadow-md hover:bg-white'}`}>
-                    <div>
-                      <h3 className={`font-bold transition-colors ${isDark ? 'text-slate-200 group-hover:text-cyan-300' : 'text-slate-800 group-hover:text-cyan-600'}`}>{lab.name}</h3>
-                      <p className={`text-xs mt-0.5 font-medium ${textMuted}`}>ID: {lab.loginId}</p>
-                    </div>
-                    <button onClick={() => downloadIndividualPDF(lab)} className={`p-2.5 rounded-lg transition-all border shadow-sm active:scale-95 ${isDark ? 'bg-slate-800 hover:bg-emerald-600 text-emerald-400 hover:text-white border-slate-700 hover:border-emerald-500' : 'bg-white hover:bg-emerald-50 text-emerald-600 border-slate-200 hover:border-emerald-300'}`} title="Download Parchi">
-                      <FileDown size={18} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
           </div>
         )}
 
         {/* ===================== MANAGE LABOUR TAB ===================== */}
         {activeTab === "manage" && (
           <div className="space-y-6 animate-in fade-in duration-300">
+            
+            {/* 🟢 NAYA: Database Backup Tool */}
+            <div className={`border rounded-2xl p-6 shadow-xl transition-all ${cardBg}`}>
+               <h2 className={`text-xl font-extrabold mb-4 flex items-center gap-2 ${isDark ? 'text-blue-400' : 'text-blue-600'}`}><DatabaseBackup size={24} /> {t("Database Backup", "डेटाबेस बैकअप")}</h2>
+               <div className="flex flex-col md:flex-row items-center gap-4">
+                 <p className={`text-sm flex-1 ${textMuted}`}>Apne poore database ka offline backup apne computer mein download karke zarur rakhein.</p>
+                 <button onClick={handleExportBackup} className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold flex items-center gap-2 shadow-md active:scale-95">
+                   <Download size={18}/> Export Database (.json)
+                 </button>
+               </div>
+            </div>
+
+            {/* 🟢 NAYA: Security PIN Setting */}
+            <div className={`border rounded-2xl p-6 shadow-xl transition-all ${cardBg}`}>
+               <h2 className={`text-xl font-extrabold mb-4 flex items-center gap-2 ${isDark ? 'text-rose-400' : 'text-rose-600'}`}><LockKeyhole size={24} /> {t("Security PIN", "सुरक्षा पिन")}</h2>
+               <form onSubmit={handleSetPin} className="flex flex-col md:flex-row items-center gap-4">
+                 <div className="flex-1 w-full">
+                    <p className={`text-sm mb-2 ${textMuted}`}>Ye PIN dalne ke baad hi koi account delete ya password reset kar payega.</p>
+                    <input type="text" maxLength={4} value={newPinSetup} onChange={(e) => setNewPinSetup(e.target.value)} className={`w-full rounded-xl px-4 py-2.5 outline-none font-bold transition-all border ${inputBg}`} placeholder="Enter 4-Digit PIN" />
+                 </div>
+                 <button type="submit" className="w-full md:w-auto px-6 py-2.5 mt-auto bg-rose-600 hover:bg-rose-500 text-white rounded-xl font-bold flex items-center gap-2 shadow-md active:scale-95">
+                   <Check size={18}/> {adminPin ? "Update PIN" : "Set PIN"}
+                 </button>
+               </form>
+            </div>
+
             <div className={`border rounded-2xl p-6 shadow-xl transition-all ${cardBg}`}>
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
                 <div>
@@ -896,7 +962,7 @@ export default function AdminDashboard() {
                                   <button onClick={() => setResetPasswordId(lab.id)} className={`p-1.5 rounded-lg transition-colors border ${isDark ? 'bg-slate-800 border-slate-700 hover:bg-blue-500/20 hover:text-blue-400 text-slate-400' : 'bg-white border-slate-300 hover:bg-blue-50 hover:text-blue-600 text-slate-500 shadow-sm'}`} title="Create/Reset Password">
                                     <Key size={16} />
                                   </button>
-                                  <button onClick={() => setDeleteLabourId(lab.id)} className={`p-1.5 rounded-lg transition-colors border ${isDark ? 'bg-slate-800 border-slate-700 hover:bg-rose-500/20 hover:text-rose-400 text-slate-400' : 'bg-white border-slate-300 hover:bg-rose-50 hover:text-rose-600 text-slate-500 shadow-sm'}`} title="Delete User">
+                                  <button onClick={() => setShowPinModal({action: "delete", targetId: lab.id})} className={`p-1.5 rounded-lg transition-colors border ${isDark ? 'bg-slate-800 border-slate-700 hover:bg-rose-500/20 hover:text-rose-400 text-slate-400' : 'bg-white border-slate-300 hover:bg-rose-50 hover:text-rose-600 text-slate-500 shadow-sm'}`} title="Move to Recycle Bin">
                                     <Trash2 size={16} />
                                   </button>
                                 </>
@@ -933,9 +999,7 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
-              {/* Fullscreen Selection Toggle Container */}
               <div className={fullScreenList === "work" ? `fixed inset-0 z-[120] p-4 md:p-8 flex flex-col animate-in zoom-in-95 duration-200 ${isDark ? 'bg-[#0f172a]' : 'bg-slate-50'}` : `w-full md:w-2/3 border-t md:border-t-0 md:border-l pt-4 md:pt-0 md:pl-6 flex flex-col ${isDark ? 'border-slate-700/50' : 'border-slate-200'}`}>
-                
                 <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-3 gap-3">
                   <label className={`text-xs md:text-sm font-extrabold uppercase tracking-wider flex items-center gap-2 ${textMain}`}>
                     Select Labourers <span className={`px-2 py-0.5 rounded-md ${isDark ? 'bg-emerald-500/20 text-emerald-400' : 'bg-emerald-100 text-emerald-700 border border-emerald-200'}`}>{selectedLabourIds.length} Selected</span>
@@ -975,44 +1039,6 @@ export default function AdminDashboard() {
                 )}
               </div>
             </div>
-
-            <div className="mt-8 pt-6">
-              <h3 className={`text-lg font-extrabold mb-4 flex items-center gap-2 ${textMain}`}>Records for <span className={`px-2 py-0.5 rounded border ${isDark ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' : 'text-emerald-700 bg-emerald-100 border-emerald-300'}`}>{entryDate}</span></h3>
-              <div className={`border rounded-2xl overflow-hidden shadow-xl transition-all ${isDark ? 'bg-slate-800/40 border-slate-700/50' : 'bg-white border-slate-200'}`}>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse min-w-125">
-                    <thead>
-                      <tr className={`text-xs uppercase tracking-wider border-b ${tableHeader}`}><th className="p-4 font-bold">Name</th><th className="p-4 font-bold">Location</th><th className="p-4 font-bold text-emerald-500">Total Paye / Status</th><th className="p-4 font-bold text-cyan-500">Earned</th></tr>
-                    </thead>
-                    <tbody className={`text-sm ${tableBody}`}>
-                      {currentLabourers.filter(lab => lab.entries.some((e:any) => e.date === entryDate && (e.payeCount > 0 || e.isLeave))).length === 0 ? (
-                        <tr><td colSpan={4} className={`p-6 text-center font-medium italic ${textMuted}`}>No work or leave entries found for this date.</td></tr>
-                      ) : (
-                        currentLabourers.map(lab => {
-                          const entry = lab.entries.find((e:any) => e.date === entryDate && (e.payeCount > 0 || e.isLeave));
-                          if (!entry) return null;
-                          const rate = entry.customRatePerPaya !== undefined ? entry.customRatePerPaya : (lab.ratePerPaya || 0);
-                          const earned = entry.payeCount * rate;
-                          return (
-                            <tr key={lab.id} className={`transition-colors ${tableRowHover}`}>
-                              <td className={`p-4 font-bold ${textMain}`}>{lab.name}</td><td className={`p-4 font-medium ${textMuted}`}>{lab.paya || "-"}</td>
-                              <td className="p-4 font-bold">
-                                {entry.isLeave ? (
-                                  <span className={`px-2 py-1 rounded border flex items-center gap-1.5 w-fit ${isDark ? 'text-rose-400 bg-rose-500/10 border-rose-500/20' : 'text-rose-700 bg-rose-100 border-rose-300'}`}><UserMinus size={14}/> LEAVE</span>
-                                ) : (
-                                  <span className={`px-2 py-1 rounded border ${isDark ? 'text-emerald-400 bg-emerald-900/20 border-emerald-500/20' : 'text-emerald-800 bg-emerald-100 border-emerald-300'}`}>{entry.payeCount} <span className={`text-xs font-medium ml-1 ${textMuted}`}>(@ ₹{rate})</span></span>
-                                )}
-                              </td>
-                              <td className={`p-4 font-extrabold ${isDark ? 'text-cyan-400' : 'text-cyan-600'}`}>{entry.isLeave ? "-" : `₹${earned.toLocaleString()}`}</td>
-                            </tr>
-                          );
-                        })
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
           </div>
         )}
 
@@ -1020,7 +1046,6 @@ export default function AdminDashboard() {
         {activeTab === "kharcha" && (
           <div className="space-y-6 animate-in fade-in duration-300">
             <div className={`border rounded-2xl p-6 shadow-xl flex flex-col md:flex-row gap-6 mt-6 transition-all ${cardBg}`}>
-              
               <div className="w-full md:w-1/3 flex flex-col gap-4">
                 <h2 className="text-xl font-extrabold mb-2 text-orange-500 flex items-center gap-2"><CheckSquare size={22} /> Bulk Khuraak (Weekly)</h2>
                 <div><label className={`block text-xs font-bold mb-1 ${textMuted}`}>Date</label><input type="date" value={bulkKharchaDate} onChange={(e) => setBulkKharchaDate(e.target.value)} className={`w-full rounded-lg px-3 py-2.5 outline-none font-medium transition-all border ${inputBg}`} required /></div>
@@ -1028,7 +1053,6 @@ export default function AdminDashboard() {
                 <button onClick={handleAddBulkKharcha} className="w-full mt-auto py-3.5 bg-orange-600 hover:bg-orange-500 text-white rounded-xl font-bold transition-all shadow-lg active:scale-95">Submit Bulk Khuraak</button>
               </div>
 
-              {/* Kharcha Fullscreen Toggle */}
               <div className={fullScreenList === "kharcha" ? `fixed inset-0 z-[120] p-4 md:p-8 flex flex-col animate-in zoom-in-95 duration-200 ${isDark ? 'bg-[#0f172a]' : 'bg-slate-50'}` : `w-full md:w-2/3 border-t md:border-t-0 md:border-l pt-4 md:pt-0 md:pl-6 flex flex-col ${isDark ? 'border-slate-700/50' : 'border-slate-200'}`}>
                 <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-3 gap-3">
                   <label className={`text-xs md:text-sm font-extrabold uppercase tracking-wider flex items-center gap-2 ${textMain}`}>
@@ -1050,7 +1074,6 @@ export default function AdminDashboard() {
                     <input type="checkbox" className="w-5 h-5 accent-orange-500 rounded cursor-pointer" checked={selectedKharchaIds.length === filteredBulkKharcha.length && filteredBulkKharcha.length > 0} onChange={(e) => { e.target.checked ? setSelectedKharchaIds(filteredBulkKharcha.map(l => l.id)) : setSelectedKharchaIds([]); }} />
                     <span className={`text-sm font-extrabold ${textMain}`}>Select All ({filteredBulkKharcha.length})</span>
                   </label>
-                  {filteredBulkKharcha.length === 0 && <p className={`text-sm p-4 text-center font-medium ${textMuted}`}>No labourers found.</p>}
                   {filteredBulkKharcha.map(lab => (
                     <label key={lab.id} className={`flex items-center justify-between p-4 cursor-pointer border-b last:border-0 transition-colors ${isDark ? (selectedKharchaIds.includes(lab.id) ? 'bg-orange-900/20 border-slate-700/30' : 'hover:bg-slate-800/50 border-slate-700/30') : (selectedKharchaIds.includes(lab.id) ? 'bg-orange-50 border-slate-200' : 'hover:bg-white border-slate-200')}`}>
                       <div className="flex items-center gap-3">
@@ -1142,7 +1165,7 @@ export default function AdminDashboard() {
                     <tbody className={`text-sm ${tableBody}`}>
                       {filteredPeshgi.length === 0 && <tr><td colSpan={3} className={`p-4 text-center font-medium ${textMuted}`}>No records found.</td></tr>}
                       {filteredPeshgi.map(lab => {
-                        const totalPeshgi = getStats(lab).peshgi; // NAYA: Accurate calculation
+                        const totalPeshgi = getStats(lab).peshgi;
                         const isExpanded = expandedPeshgiLabourId === lab.id;
                         
                         const peshgiHistory = (lab.entries || [])
@@ -1193,6 +1216,58 @@ export default function AdminDashboard() {
                   </table>
                 </div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* ===================== 🟢 NAYA: RECYCLE BIN TAB ===================== */}
+        {activeTab === "recycle" && (
+          <div className="space-y-6 animate-in fade-in duration-300 max-w-4xl mx-auto">
+            <div className={`border rounded-2xl p-6 md:p-8 shadow-xl transition-all ${cardBg}`}>
+              <div className="mb-6 border-b pb-4 border-slate-700/50">
+                <h2 className="text-2xl font-extrabold mb-2 flex items-center gap-3 text-slate-500">
+                  <Trash size={28} /> {t("Recycle Bin (Deleted Accounts)", "रीसायकल बिन (हटाए गए अकाउंट)")}
+                </h2>
+                <p className={`text-sm font-medium ${textMuted}`}>
+                  Yahan wo accounts hain jinhe delete kiya gaya tha. Aap inhe wapas Restore kar sakte hain ya hamesha ke liye Delete kar sakte hain.
+                </p>
+              </div>
+
+              {deletedLabourers.length === 0 ? (
+                 <div className={`p-10 text-center rounded-xl border border-dashed ${isDark ? 'border-slate-700/50 bg-slate-900/50' : 'border-slate-300 bg-slate-50'}`}>
+                    <RefreshCcw size={40} className={`mx-auto mb-4 ${textMuted} opacity-50`} />
+                    <h3 className={`text-lg font-bold ${textMuted}`}>Recycle Bin Khali Hai</h3>
+                 </div>
+              ) : (
+                <div className={`rounded-xl border overflow-hidden shadow-inner ${isDark ? 'border-slate-700/60 bg-slate-900/40' : 'border-slate-200 bg-white'}`}>
+                  <table className="w-full text-left">
+                    <thead className={tableHeader}>
+                      <tr>
+                        <th className="p-4 font-bold">Deleted Labour</th>
+                        <th className="p-4 font-bold text-center">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className={`text-sm ${tableBody}`}>
+                      {deletedLabourers.map(lab => (
+                        <tr key={lab.id} className={`transition-colors ${tableRowHover}`}>
+                          <td className="p-4">
+                            <span className={`font-bold text-base block ${textMain}`}>{lab.name}</span>
+                            <span className={`text-xs ${textMuted}`}>ID: {lab.loginId} | Location: {lab.paya}</span>
+                          </td>
+                          <td className="p-4 flex items-center justify-center gap-2">
+                             <button onClick={() => setShowPinModal({action: "restore", targetId: lab.id})} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg transition-all active:scale-95 flex items-center gap-1">
+                               <RefreshCcw size={16}/> Restore
+                             </button>
+                             <button onClick={() => setShowPinModal({action: "hard_delete", targetId: lab.id})} className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-lg transition-all active:scale-95 flex items-center gap-1">
+                               <Trash2 size={16}/> Forever
+                             </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </div>
         )}
