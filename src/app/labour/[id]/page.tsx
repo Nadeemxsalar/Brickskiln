@@ -3,7 +3,7 @@ import { useEffect, useState, use } from "react";
 import { useRouter } from "next/navigation";
 import { getLabourData, saveLabourData, fetchFromFirebase } from "../../../lib/storage";
 import { Labour } from "../../../types";
-import { IndianRupee, ArrowLeft, Layers, MessageSquare, MessageSquareText, Check, LayoutList, Table, Edit3, X, PlusCircle, LogOut, Calculator, Download, UserMinus, Sun, Moon, Loader2, Globe } from "lucide-react";
+import { IndianRupee, ArrowLeft, Layers, MessageSquare, MessageSquareText, Check, LayoutList, Table, Edit3, X, PlusCircle, LogOut, Calculator, Download, UserMinus, Sun, Moon, Loader2, Globe, Menu } from "lucide-react";
 import Link from "next/link";
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -21,7 +21,9 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
   const [isLoading, setIsLoading] = useState(true);
   
   const [theme, setTheme] = useState<"dark" | "light">("light");
-  const [lang, setLang] = useState<"en" | "hi">("en"); // 🟢 NAYA: Language State
+  const [lang, setLang] = useState<"en" | "hi">("en"); 
+  
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   const [editingRemark, setEditingRemark] = useState<{ date: string; text: string } | null>(null);
   const [editingRowDate, setEditingRowDate] = useState<string | null>(null);
@@ -31,7 +33,6 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
   const [viewMode, setViewMode] = useState<"card" | "table">("card");
   const [includePeshgi, setIncludePeshgi] = useState(true);
 
-  // 🟢 NAYA: Translation Helper
   const t = (en: string, hi: string) => lang === "hi" ? hi : en;
 
   useEffect(() => {
@@ -255,7 +256,6 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
   const deductions = calculatedKharcha + (includePeshgi ? calculatedPeshgi : 0);
   const grandTotal = Math.round(calculatedEarned - deductions);
 
-  // 🟢 NAYA: Professional PDF Generation
   const downloadMyParchi = () => {
     const doc = new jsPDF();
     
@@ -389,50 +389,73 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
 
   return (
     <div className={`min-h-screen font-sans pb-20 selection:bg-blue-500/30 transition-colors duration-300 p-4 md:p-8 ${bgMain}`}>
-      <div className="max-w-7xl mx-auto space-y-6">
-
-        {/* HEADER */}
-        <div className="flex justify-between items-start w-full">
-          <div className="flex items-start gap-3">
-            {isAdmin && (
-              <Link href="/admin" className={`p-2 md:p-2.5 rounded-xl transition border shrink-0 shadow-sm mt-0.5 ${isDark ? 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-300' : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-600'}`}>
-                <ArrowLeft className="w-5 h-5" />
-              </Link>
-            )}
-            <div className="flex flex-col gap-1.5">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h1 className={`text-2xl md:text-4xl font-extrabold tracking-tight bg-clip-text text-transparent drop-shadow-sm ${isDark ? 'bg-gradient-to-r from-emerald-400 via-cyan-400 to-blue-400' : 'bg-gradient-to-r from-emerald-600 via-cyan-600 to-blue-600'}`}>
-                  {labour.name} 
-                </h1>
-                {(labour as any).loginId && (
-                  <span className={`text-xs md:text-sm font-bold border px-2.5 py-1 rounded-md ${isDark ? 'bg-blue-900/40 text-blue-300 border-blue-500/30' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
-                    ID: {(labour as any).loginId}
-                  </span>
-                )}
-              </div>
-              <div className="flex flex-wrap gap-2 mt-1">
-                {isAdmin && ( 
-                  <span className={`text-[10px] md:text-xs font-bold px-2.5 py-1 rounded-full border flex items-center gap-1 ${isDark ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/20' : 'text-emerald-700 bg-emerald-50 border-emerald-200'}`}>
-                    <IndianRupee className="w-3 h-3" /> {t("Rate: ₹", "रेट: ₹")}{defaultPayeRate}
-                  </span>
-                )}
-                <span className={`text-[10px] md:text-xs font-bold px-2.5 py-1 rounded-full border flex items-center gap-1 ${isDark ? 'text-blue-300 bg-blue-500/10 border-blue-500/20' : 'text-blue-700 bg-blue-50 border-blue-200'}`}>
-                  <Layers className="w-3 h-3" /> {t("Loc: ", "जगह: ")}{labour.paya || "-"}
-                </span>
-              </div>
+      
+      {/* HAMBURGER OVERLAY & MENU */}
+      {isMenuOpen && (
+        <div className="fixed inset-0 z-[150] flex animate-in fade-in duration-200">
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsMenuOpen(false)}></div>
+          <div className={`relative ml-auto h-full w-64 shadow-2xl flex flex-col transform transition-transform duration-300 animate-in slide-in-from-right-10 ${isDark ? 'bg-slate-900 border-l border-slate-700' : 'bg-white border-l border-slate-200'}`}>
+            <div className={`flex items-center justify-between p-5 border-b ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
+              <h3 className={`font-extrabold tracking-wider uppercase text-sm ${textMain}`}>{t("Settings Menu", "सेटिंग्स मेनू")}</h3>
+              <button onClick={() => setIsMenuOpen(false)} className={`p-2 rounded-xl transition-colors ${isDark ? 'bg-slate-800 text-slate-400 hover:text-white' : 'bg-slate-100 text-slate-500 hover:text-slate-800'}`}>
+                <X size={20} />
+              </button>
+            </div>
+            <div className="flex flex-col p-4 gap-3">
+              <button onClick={() => { toggleLanguage(); setIsMenuOpen(false); }} className={`flex items-center gap-3 p-3.5 rounded-xl font-bold transition-all shadow-sm ${isDark ? 'bg-slate-800 text-cyan-400 hover:bg-slate-700 border-slate-700' : 'bg-slate-50 text-cyan-700 hover:bg-slate-100 border border-slate-200'}`}>
+                <Globe size={18} /> {lang === "en" ? "Change to Hindi (हिंदी)" : "Change to English"}
+              </button>
+              <button onClick={() => { toggleTheme(); setIsMenuOpen(false); }} className={`flex items-center gap-3 p-3.5 rounded-xl font-bold transition-all shadow-sm ${isDark ? 'bg-slate-800 text-yellow-400 hover:bg-slate-700 border-slate-700' : 'bg-slate-50 text-slate-700 hover:bg-slate-100 border border-slate-200'}`}>
+                {isDark ? <Sun size={18} /> : <Moon size={18} />} {t("Toggle Theme", "थीम बदलें (Dark/Light)")}
+              </button>
+              <div className={`my-2 border-t ${isDark ? 'border-slate-800' : 'border-slate-100'}`}></div>
+              <button onClick={handleLogout} className={`flex items-center gap-3 p-3.5 rounded-xl font-bold transition-all shadow-sm bg-rose-500/10 text-rose-600 hover:bg-rose-500 hover:text-white border border-rose-500/20`}>
+                <LogOut size={18} /> {t("Logout Account", "अकाउंट लॉगआउट करें")}
+              </button>
             </div>
           </div>
+        </div>
+      )}
 
-          <div className="flex items-center gap-2 md:gap-3 shrink-0">
-            <button onClick={toggleLanguage} className={`p-2 rounded-full transition-colors font-bold text-xs flex items-center gap-1 ${isDark ? 'bg-slate-800 text-cyan-400 hover:bg-slate-700' : 'bg-white text-cyan-600 shadow-md hover:bg-slate-50'}`}>
-              <Globe size={16} /> {lang === "en" ? "HI" : "EN"}
+      <div className="max-w-7xl mx-auto space-y-6">
+
+        {/* HEADER SECTION (CLEAN & MINIMAL) */}
+        <div className="flex flex-col gap-3 mb-6">
+          <div className="flex justify-between items-center w-full">
+            {/* Left Side: Back + Name */}
+            <div className="flex items-center gap-3">
+              {isAdmin && (
+                <Link href="/admin" className={`p-2.5 rounded-xl transition border shadow-sm ${isDark ? 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-300' : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-600'}`}>
+                  <ArrowLeft className="w-5 h-5" />
+                </Link>
+              )}
+              {/* Premium Gradient Title */}
+              <h1 className={`text-2xl md:text-3xl font-extrabold tracking-tight bg-clip-text text-transparent drop-shadow-sm ${isDark ? 'bg-gradient-to-r from-blue-400 to-cyan-300' : 'bg-gradient-to-r from-blue-700 to-cyan-600'}`}>
+                {labour.name} 
+              </h1>
+            </div>
+
+            {/* Right Side: Hamburger Button */}
+            <button onClick={() => setIsMenuOpen(true)} className={`p-2.5 rounded-xl transition-all border shadow-sm active:scale-95 ${isDark ? 'bg-slate-800 hover:bg-slate-700 border-slate-600 text-slate-300' : 'bg-white hover:bg-slate-50 border-slate-300 text-slate-600'}`}>
+              <Menu size={22} />
             </button>
-            <button onClick={toggleTheme} className={`p-2 rounded-full transition-colors ${isDark ? 'bg-slate-800 text-yellow-400 hover:bg-slate-700' : 'bg-white text-slate-600 shadow-md hover:bg-slate-50'}`}>
-              {isDark ? <Sun size={18} /> : <Moon size={18} />}
-            </button>
-            <button onClick={handleLogout} className="flex items-center gap-1.5 px-3 py-2 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-lg transition text-xs font-bold border border-red-500/20">
-              <LogOut size={16}/> <span className="hidden md:inline">{t("Logout", "लॉगआउट")}</span>
-            </button>
+          </div>
+
+          {/* BADGES SECTION (Sleek Tags) */}
+          <div className={`flex flex-wrap items-center gap-2 ${isAdmin ? 'ml-0 md:ml-14' : ''}`}>
+            {(labour as any).loginId && (
+              <span className={`text-[10px] md:text-xs font-bold px-2.5 py-1 rounded-md border flex items-center gap-1.5 shadow-sm ${isDark ? 'bg-slate-800/80 border-slate-700 text-slate-300' : 'bg-white border-slate-200 text-slate-600'}`}>
+                <span className={isDark ? "text-blue-400" : "text-blue-500"}>ID:</span> {(labour as any).loginId}
+              </span>
+            )}
+            {isAdmin && (
+              <span className={`text-[10px] md:text-xs font-bold px-2.5 py-1 rounded-md border flex items-center gap-1 shadow-sm ${isDark ? 'bg-slate-800/80 border-slate-700 text-slate-300' : 'bg-white border-slate-200 text-slate-600'}`}>
+                <IndianRupee className={`w-3.5 h-3.5 ${isDark ? 'text-emerald-400' : 'text-emerald-500'}`} /> {t("Rate: ₹", "रेट: ₹")}{defaultPayeRate}
+              </span>
+            )}
+            <span className={`text-[10px] md:text-xs font-bold px-2.5 py-1 rounded-md border flex items-center gap-1.5 shadow-sm ${isDark ? 'bg-slate-800/80 border-slate-700 text-slate-300' : 'bg-white border-slate-200 text-slate-600'}`}>
+              <Layers className={`w-3.5 h-3.5 ${isDark ? 'text-violet-400' : 'text-violet-500'}`} /> {t("Loc: ", "जगह: ")}{labour.paya || "-"}
+            </span>
           </div>
         </div>
 
@@ -475,10 +498,10 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
             <div className="flex items-center gap-3 w-full lg:w-auto shrink-0 mt-2 lg:mt-0">
               <div className={`p-1.5 rounded-xl border w-full lg:w-auto flex flex-1 lg:flex-none ${isDark ? 'bg-slate-900/80 border-slate-700' : 'bg-slate-100 border-slate-200'}`}>
                 <button onClick={() => setIncludePeshgi(true)} className={`flex-1 lg:flex-none px-4 py-2.5 rounded-lg text-sm font-bold transition-all ${includePeshgi ? "bg-blue-600 text-white shadow-md" : (isDark ? "text-slate-400 hover:text-white" : "text-slate-500 hover:text-slate-900")}`}>
-                  {t("Include Peshgi", "पेशगी जोड़ें")}
+                  {t("Include Peshgi", "पेशगी जोड़ें")}
                 </button>
                 <button onClick={() => setIncludePeshgi(false)} className={`flex-1 lg:flex-none px-4 py-2.5 rounded-lg text-sm font-bold transition-all ${!includePeshgi ? (isDark ? "bg-slate-600 text-white shadow-md" : "bg-white text-slate-900 shadow-sm border border-slate-200") : (isDark ? "text-slate-400 hover:text-white" : "text-slate-500 hover:text-slate-900")}`}>
-                  {t("Exclude Peshgi", "पेशगी छोड़ें")}
+                  {t("Exclude Peshgi", "पेशगी छोड़ें")}
                 </button>
               </div>
               <button onClick={downloadMyParchi} title={t("Download PDF Parchi", "पर्ची डाउनलोड करें")} className="p-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl transition-all shadow-md active:scale-95 border border-indigo-500/50 flex-shrink-0">
@@ -540,7 +563,7 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
             <thead className={`${isCard ? "hidden md:table-header-group" : ""} ${tableHeaderBg} text-xs tracking-widest uppercase border-b`}>
               <tr>
                 <th className="p-4 md:px-6 font-bold w-28 md:w-36">{t("Date", "तारीख")}</th>
-                <th className={`p-4 md:px-6 font-bold ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>{t("Paye Details", "पाये / हाज़री")}</th>
+                <th className={`p-4 md:px-6 font-bold ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>{t("Paye Details", "पाये / हाज़री")}</th>
                 <th className={`p-4 md:px-6 font-bold ${isDark ? 'text-cyan-400' : 'text-cyan-600'}`}>{t("Daily Earning", "रोज की कमाई")}</th>
                 <th className={`p-4 md:px-6 font-bold ${isDark ? 'text-orange-400' : 'text-orange-600'}`}>{t("Expenses", "खर्चा")}</th>
                 {isAdmin && <th className="p-4 md:px-6 font-bold text-center w-32">{t("Actions", "बदलाव")}</th>}
@@ -578,7 +601,7 @@ export default function LabourView({ params }: { params: Promise<{ id: string }>
                     </td>
 
                     <td className={isCard ? `${!hasEntry && !isEditingThisRow && !isEditingRemarkThisRow ? 'hidden' : 'flex'} justify-between items-center md:table-cell p-3 md:px-6 md:py-4 border-b md:border-b-0 ${isDark ? 'border-slate-700/50' : 'border-slate-200'}` : "p-4 md:px-6 font-medium"}>
-                      {isCard && <span className={`md:hidden text-[10px] uppercase font-bold tracking-widest ${textMuted}`}>{t("Paye / Status", "पाये / हाज़री")}</span>}
+                      {isCard && <span className={`md:hidden text-[10px] uppercase font-bold tracking-widest ${textMuted}`}>{t("Paye / Status", "पाये / हाज़री")}</span>}
                       
                       {isLeave ? (
                         <span className={`flex items-center gap-1.5 font-bold px-2.5 py-1 rounded-md w-fit text-xs tracking-wider border ${isDark ? 'text-rose-400 bg-rose-500/10 border-rose-500/20' : 'text-rose-600 bg-rose-100 border-rose-300'}`}>
