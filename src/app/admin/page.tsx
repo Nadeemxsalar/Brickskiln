@@ -182,7 +182,7 @@ export default function AdminDashboard() {
     initApp();
   }, [router]);
 
-  // 🟢 NAYA: Error-Free Silent Translation
+  // 🟢 Error-Free Silent Translation
   useEffect(() => {
     if (lang === "hi" && labourers.length > 0) {
       const translateNames = async () => {
@@ -315,7 +315,7 @@ export default function AdminDashboard() {
   const deletedLabourers = labourers.filter(lab => lab.bhattaId === activeBhattaId && lab.isDeleted);
   const activeBhattaName = bhattas.find(b => b.id === activeBhattaId)?.name || "Bhatta";
 
-  // 🟢 NAYA: Advanced Monthly Ledger Logic
+  // Advanced Monthly Ledger Logic
   const [matrixYear, matrixMonthNum] = matrixMonth.split("-").map(Number);
   const daysInMatrixMonth = new Date(matrixYear, matrixMonthNum, 0).getDate();
   const allMatrixDates = Array.from({ length: daysInMatrixMonth }, (_, i) => {
@@ -635,14 +635,17 @@ export default function AdminDashboard() {
   const filteredPeshgi = currentLabourers.filter(l => l.name.toLowerCase().includes(searchPeshgi.toLowerCase()));
   const filteredDownload = currentLabourers.filter(l => l.name.toLowerCase().includes(searchDownload.toLowerCase()) || (l.loginId && l.loginId.includes(searchDownload)));
 
+  // 🟢 FIXED: CSS Theme Classes for Absolute Override (Avoiding Global .inputField bleeding)
   const isDark = theme === "dark";
   const bgMain = isDark ? "bg-[#0f172a] text-white" : "bg-slate-50 text-slate-900";
   const navBg = isDark ? "bg-[#0f172a]/90 border-slate-700/50" : "bg-white/90 border-slate-200 shadow-sm";
   const sideBg = isDark ? "bg-[#1e293b] border-slate-700/50" : "bg-white border-slate-200 shadow-xl";
   const cardBg = isDark ? "bg-slate-800/40 border-slate-700/50" : "bg-white border-slate-200 shadow-md";
-  const inputBg = isDark ? "bg-slate-900/50 border-slate-600 focus:border-blue-500 text-white placeholder-slate-500" : "bg-slate-50 border-slate-300 focus:border-blue-500 text-slate-900 placeholder-slate-400 shadow-sm";
   const textMuted = isDark ? "text-slate-400" : "text-slate-500";
   const textMain = isDark ? "text-white" : "text-slate-900";
+  
+  // High-Specificity Input Background override to stop external CSS from making it black
+  const inputBg = isDark ? "!bg-slate-900/50 !border-slate-600 focus:border-blue-500 !text-white placeholder-slate-500" : "!bg-white !border-slate-300 focus:border-blue-500 !text-slate-900 placeholder-slate-400 shadow-sm";
   
   const tableHeader = isDark ? "bg-slate-800 text-slate-300 border-slate-700" : "bg-slate-100 text-slate-700 border-slate-300";
   const tableBody = isDark ? "divide-slate-700/50 text-slate-200" : "divide-slate-200 text-slate-700";
@@ -667,9 +670,16 @@ export default function AdminDashboard() {
             <p className={`text-xs font-semibold mt-1 ${textMuted}`}>Selected Month: {matrixMonth}</p>
           </div>
           <div className="flex items-center gap-3 w-full sm:w-auto">
-            <div className="flex items-center gap-2 bg-white dark:bg-slate-800 px-3 py-1.5 rounded-lg border shadow-sm dark:border-slate-700 w-full sm:w-auto">
+            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border shadow-sm w-full sm:w-auto ${isDark ? 'bg-slate-800 border-slate-700' : '!bg-white !border-slate-300'}`}>
               <CalendarDays size={16} className={textMuted}/>
-              <input type="month" value={matrixMonth} onChange={(e) => setMatrixMonth(e.target.value)} className={`outline-none text-sm font-bold bg-transparent w-full ${textMain}`} required />
+              <input 
+                type="month" 
+                value={matrixMonth} 
+                onChange={(e) => setMatrixMonth(e.target.value)} 
+                style={{ colorScheme: isDark ? 'dark' : 'light' }}
+                className={`outline-none text-sm font-bold border-none p-0 m-0 !bg-transparent w-full ${isDark ? '!text-white' : '!text-slate-900'}`} 
+                required 
+              />
             </div>
             <button onClick={() => setIsFullscreenMatrix(!isFullscreenMatrix)} className={`p-2.5 rounded-lg border shadow-sm transition-all hover:scale-105 active:scale-95 ${isDark ? 'bg-slate-700 hover:bg-slate-600 border-slate-600 text-white' : 'bg-white hover:bg-slate-100 border-slate-300 text-slate-800'}`}>
               {isFullscreenMatrix ? <Minimize2 size={18}/> : <Maximize2 size={18}/>}
@@ -845,7 +855,7 @@ export default function AdminDashboard() {
       )}
 
       {/* NAVBAR */}
-      <nav className={`fixed top-0 w-full h-16 backdrop-blur-md border-b z-40 flex items-center justify-between px-4 transition-colors duration-300 ${navBg}`}>
+      <nav className={`fixed top-0 w-full h-16 backdrop-blur-md border-b z-[100] flex items-center justify-between px-4 transition-colors duration-300 ${navBg}`}>
         <div className="flex items-center">
           <button onClick={() => setIsSidebarOpen(true)} className={`p-2 rounded-xl transition-colors ${isDark ? 'hover:bg-slate-800 text-white' : 'hover:bg-slate-100 text-slate-800'}`}><Menu size={28} /></button>
           <div className="ml-4 flex flex-col">
@@ -882,8 +892,8 @@ export default function AdminDashboard() {
       </nav>
 
       {/* SIDEBAR */}
-      {isSidebarOpen && <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-30" onClick={() => setIsSidebarOpen(false)}></div>}
-      <div className={`fixed top-0 left-0 h-full w-72 border-r z-40 transform transition-transform duration-300 ease-in-out flex flex-col ${sideBg} ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+      {isSidebarOpen && <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[105]" onClick={() => setIsSidebarOpen(false)}></div>}
+      <div className={`fixed top-0 left-0 h-full w-72 border-r z-[110] transform transition-transform duration-300 ease-in-out flex flex-col ${sideBg} ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className={`flex items-center justify-between p-4 border-b ${isDark ? 'border-slate-700/50' : 'border-slate-200'}`}>
           <h2 className={`text-xl font-bold ${textMain}`}>{t("Admin Menu", "व्यवस्थापक मेनू")}</h2>
           <button onClick={() => setIsSidebarOpen(false)} className={`p-2 rounded-xl ${isDark ? 'hover:bg-slate-700 text-slate-300' : 'hover:bg-slate-100 text-slate-600'}`}><X size={24} /></button>
@@ -983,7 +993,7 @@ export default function AdminDashboard() {
                 {filteredDashboard.map((lab) => {
                   const stats = getStats(lab);
                   return (
-                    <div key={lab.id} className={`p-4 rounded-xl border flex flex-col lg:flex-row justify-between items-center gap-4 transition-all ${isDark ? 'bg-slate-900/40 border-slate-700/50 hover:bg-slate-800/60' : 'bg-slate-50 border-slate-200 hover:bg-white hover:shadow-md'}`}>
+                    <div key={lab.id} className={`p-4 rounded-xl border flex flex-col lg:flex-row justify-between items-center gap-4 transition-all ${isDark ? 'bg-slate-900/40 border-slate-700/50 hover:bg-slate-800/60' : 'bg-white border-slate-200 hover:shadow-md'}`}>
                       <div className="flex-1 w-full text-left"><h3 className={`font-extrabold text-xl ${textMain}`}>{tn(lab.name)}</h3><p className={`text-sm mt-1 ${textMuted}`}>ID: <span className="text-blue-500 font-bold">{lab.loginId}</span> | {lab.phone}</p></div>
                       <div className="flex-1 w-full flex flex-col sm:flex-row gap-3 justify-start lg:justify-center">
                         <div className={`text-left px-4 py-2 rounded-lg border ${isDark ? 'bg-slate-900/50 border-slate-700/50' : 'bg-white border-slate-200 shadow-sm'}`}><p className="text-emerald-500 text-[10px] font-bold uppercase tracking-wider">Earned</p><p className={`text-lg font-extrabold ${textMain}`}>₹{stats.earned.toLocaleString()}</p></div>
@@ -1037,7 +1047,7 @@ export default function AdminDashboard() {
             <div className={`border rounded-2xl p-6 shadow-xl transition-all ${cardBg}`}>
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
                 <div>
-                  <h2 className={`text-xl font-extrabold flex items-center gap-2 ${isDark ? 'text-indigo-400' : 'text-indigo-600'}`}><Settings size={24} /> Labour Details & Control</h2>
+                  <h2 className={`text-xl font-extrabold flex items-center gap-2 ${isDark ? 'text-blue-400' : 'text-blue-600'}`}><Settings size={24} /> Labour Details & Control</h2>
                 </div>
                 <div className="relative">
                   <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" />
@@ -1048,7 +1058,7 @@ export default function AdminDashboard() {
               <div className={`overflow-x-auto border rounded-xl ${isDark ? 'border-slate-700/50' : 'border-slate-200'}`}>
                 <table className="w-full text-left border-collapse min-w-[850px]">
                   <thead>
-                    <tr className={`text-xs uppercase tracking-wider border-b ${isDark ? 'bg-slate-800 text-slate-300 border-slate-700' : 'bg-slate-100 text-slate-700 border-slate-300'}`}>
+                    <tr className={`text-xs uppercase tracking-wider border-b ${tableHeader}`}>
                       <th className="p-4 font-bold">Name</th>
                       <th className="p-4 font-bold text-blue-500">Labour ID</th>
                       <th className="p-4 font-bold">Mobile</th>
@@ -1057,17 +1067,17 @@ export default function AdminDashboard() {
                       <th className="p-4 font-bold text-center">Actions / Controls</th>
                     </tr>
                   </thead>
-                  <tbody className={`text-sm ${isDark ? 'divide-slate-700/50 text-slate-200' : 'divide-slate-200 text-slate-700'}`}>
+                  <tbody className={`text-sm ${tableBody}`}>
                     {filteredManage.length === 0 && <tr><td colSpan={6} className={`p-4 text-center font-medium ${textMuted}`}>No results found.</td></tr>}
                     {filteredManage.map(lab => {
                       const isEditing = editingLabourId === lab.id;
                       return (
-                        <tr key={lab.id} className={`transition-colors ${isDark ? 'hover:bg-slate-800/40' : 'hover:bg-slate-50'}`}>
+                        <tr key={lab.id} className={`transition-colors ${tableRowHover}`}>
                           <td className="p-3">{isEditing ? <input type="text" value={editLabourData?.name} onChange={(e)=>setEditLabourData({...editLabourData!, name: e.target.value})} className={`w-full rounded px-2 py-1.5 outline-none border font-medium ${inputBg}`}/> : <span className="font-semibold">{tn(lab.name)}</span>}</td>
-                          <td className="p-3">{isEditing ? <input type="text" value={editLabourData?.loginId} onChange={(e)=>setEditLabourData({...editLabourData!, loginId: e.target.value})} className={`w-full rounded px-2 py-1.5 outline-none border font-bold ${isDark ? 'bg-slate-900 border-blue-500/50 text-blue-300' : 'bg-blue-50 border-blue-300 text-blue-700'}`}/> : <span className="font-extrabold text-blue-500">{lab.loginId}</span>}</td>
+                          <td className="p-3">{isEditing ? <input type="text" value={editLabourData?.loginId} onChange={(e)=>setEditLabourData({...editLabourData!, loginId: e.target.value})} className={`w-full rounded px-2 py-1.5 outline-none border font-bold ${isDark ? 'bg-slate-900 border-blue-500/50 text-blue-300' : '!bg-white border-blue-300 text-blue-700'}`}/> : <span className="font-extrabold text-blue-500">{lab.loginId}</span>}</td>
                           <td className="p-3">{isEditing ? <input type="text" value={editLabourData?.phone} onChange={(e)=>setEditLabourData({...editLabourData!, phone: e.target.value})} className={`w-full rounded px-2 py-1.5 outline-none border font-medium ${inputBg}`}/> : lab.phone}</td>
                           <td className="p-3">{isEditing ? <input type="text" value={editLabourData?.paya} onChange={(e)=>setEditLabourData({...editLabourData!, paya: e.target.value})} className={`w-full rounded px-2 py-1.5 outline-none border font-medium ${inputBg}`}/> : (tn(lab.paya) || "-")}</td>
-                          <td className="p-3">{isEditing ? <input type="number" value={editLabourData?.payeRate} onChange={(e)=>setEditLabourData({...editLabourData!, payeRate: Number(e.target.value)})} className={`w-full rounded px-2 py-1.5 outline-none border font-bold ${isDark ? 'bg-slate-900 border-emerald-500/50 text-emerald-400' : 'bg-emerald-50 border-emerald-300 text-emerald-700'}`}/> : <span className={`font-bold px-3 py-1 rounded-md ${isDark ? 'text-emerald-400 bg-emerald-500/10' : 'text-emerald-700 bg-emerald-100 border border-emerald-200'}`}>₹{lab.ratePerPaya || 0}</span>}</td>
+                          <td className="p-3">{isEditing ? <input type="number" value={editLabourData?.payeRate} onChange={(e)=>setEditLabourData({...editLabourData!, payeRate: Number(e.target.value)})} className={`w-full rounded px-2 py-1.5 outline-none border font-bold ${isDark ? 'bg-slate-900 border-emerald-500/50 text-emerald-400' : '!bg-white border-emerald-300 text-emerald-700'}`}/> : <span className={`font-bold px-3 py-1 rounded-md ${isDark ? 'text-emerald-400 bg-emerald-500/10' : 'text-emerald-700 bg-emerald-100 border border-emerald-200'}`}>₹{lab.ratePerPaya || 0}</span>}</td>
                           <td className="p-3">
                             <div className="flex items-center justify-center gap-2">
                               {isEditing ? (
@@ -1099,10 +1109,12 @@ export default function AdminDashboard() {
         {activeTab === "eent" && (
           <div className="space-y-6 animate-in fade-in duration-300">
             <div className={`border rounded-2xl p-6 shadow-xl flex flex-col md:flex-row gap-6 transition-all ${cardBg}`}>
+              
               <div className="w-full md:w-1/3 flex flex-col gap-4">
                 <h2 className="text-xl font-extrabold mb-2 text-emerald-500 flex items-center gap-2"><CheckSquare size={22} /> Bulk Attendance/Work</h2>
-                <div><label className={`block text-xs font-bold mb-1 ${textMuted}`}>Date</label><input type="date" value={entryDate} onChange={(e) => setEntryDate(e.target.value)} className={`w-full rounded-lg px-3 py-2.5 outline-none font-medium transition-all border ${inputBg}`} required /></div>
-                <div><label className="block text-xs font-extrabold text-emerald-500 mb-1">Paye Count</label><input type="number" value={payeAmount} onChange={(e) => setPayeAmount(e.target.value)} className={`w-full rounded-lg px-3 py-2.5 outline-none font-extrabold text-lg transition-all border ${isDark ? 'bg-slate-900/80 border-emerald-500/50 focus:border-emerald-400 text-emerald-100' : 'bg-emerald-50 border-emerald-300 focus:border-emerald-500 text-emerald-800'}`} placeholder="e.g. 5" /></div>
+                <div><label className={`block text-xs font-bold mb-1 ${textMuted}`}>Date</label><input type="date" value={entryDate} onChange={(e) => setEntryDate(e.target.value)} style={{ colorScheme: isDark ? 'dark' : 'light' }} className={`w-full rounded-lg px-3 py-2.5 outline-none font-medium transition-all border ${inputBg}`} required /></div>
+                <div><label className="block text-xs font-extrabold text-emerald-500 mb-1">Paye Count</label><input type="number" value={payeAmount} onChange={(e) => setPayeAmount(e.target.value)} className={`w-full rounded-lg px-3 py-2.5 outline-none font-extrabold text-lg transition-all border ${isDark ? 'bg-slate-900/80 border-emerald-500/50 focus:border-emerald-400 text-emerald-100' : '!bg-white border-emerald-300 focus:border-emerald-500 text-emerald-800'}`} placeholder="e.g. 5" /></div>
+                
                 <div className="mt-auto flex flex-col gap-3">
                   <button onClick={handleAddWork} className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2">
                     <CheckCircle size={18}/> Submit Work
@@ -1118,25 +1130,25 @@ export default function AdminDashboard() {
                   <label className={`text-xs md:text-sm font-extrabold uppercase tracking-wider flex items-center gap-2 ${textMain}`}>
                     Select Labourers <span className={`px-2 py-0.5 rounded-md ${isDark ? 'bg-emerald-500/20 text-emerald-400' : 'bg-emerald-100 text-emerald-700 border border-emerald-200'}`}>{selectedLabourIds.length} Selected</span>
                   </label>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
                     <div className="relative flex-1">
-                      <Search size={14} className="absolute left-2.5 top-1/2 transform -translate-y-1/2 text-slate-400" />
-                      <input type="text" placeholder="Search..." value={searchBulk} onChange={(e) => setSearchBulk(e.target.value)} className={`pl-8 pr-3 py-2 rounded-lg text-sm outline-none w-full sm:w-48 transition-all border ${inputBg}`} />
+                      <Search size={14} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" />
+                      <input type="text" placeholder="Search name..." value={searchBulk} onChange={(e) => setSearchBulk(e.target.value)} className={`pl-9 pr-3 py-2.5 rounded-xl text-sm outline-none w-full sm:w-56 transition-all border ${inputBg}`} />
                     </div>
-                    <button onClick={() => setFullScreenList(fullScreenList === "work" ? null : "work")} className={`p-2 rounded-lg border transition-colors ${isDark ? 'bg-slate-800 hover:bg-slate-700 border-slate-600 text-slate-300' : 'bg-white hover:bg-slate-50 border-slate-300 text-slate-600 shadow-sm'}`} title={fullScreenList === "work" ? "Minimize" : "Full Screen"}>
-                      {fullScreenList === "work" ? <Minimize2 size={18}/> : <Maximize2 size={18}/>}
+                    <button onClick={() => setFullScreenList(fullScreenList === "work" ? null : "work")} className={`p-2.5 rounded-xl border transition-colors ${isDark ? 'bg-slate-800 hover:bg-slate-700 border-slate-600 text-slate-300' : 'bg-white hover:bg-slate-50 border-slate-300 text-slate-600 shadow-sm'}`} title={fullScreenList === "work" ? "Minimize" : "Full Screen"}>
+                      {fullScreenList === "work" ? <Minimize2 size={20}/> : <Maximize2 size={20}/>}
                     </button>
                   </div>
                 </div>
 
-                <div className={`border rounded-xl overflow-y-auto custom-scrollbar shadow-inner flex-1 ${fullScreenList === "work" ? "" : "max-h-75"} ${isDark ? 'bg-slate-900/60 border-slate-700/60' : 'bg-slate-50 border-slate-200'}`}>
-                  <label className={`flex items-center gap-3 p-4 cursor-pointer border-b sticky top-0 backdrop-blur z-10 ${isDark ? 'hover:bg-slate-800/80 border-slate-700/50 bg-slate-900/95' : 'hover:bg-slate-100 border-slate-200 bg-white/95'}`}>
+                <div className={`border rounded-xl overflow-y-auto custom-scrollbar shadow-inner flex-1 ${fullScreenList === "work" ? "" : "max-h-75"} ${isDark ? 'bg-slate-900/60 border-slate-700/60' : 'bg-white border-slate-200'}`}>
+                  <label className={`flex items-center gap-3 p-4 cursor-pointer border-b sticky top-0 backdrop-blur z-10 ${isDark ? 'hover:bg-slate-800/80 border-slate-700/50 bg-slate-900/95' : 'hover:bg-slate-50 border-slate-200 bg-white/95'}`}>
                     <input type="checkbox" className="w-5 h-5 accent-emerald-500 rounded cursor-pointer" checked={selectedLabourIds.length === filteredBulk.length && filteredBulk.length > 0} onChange={(e) => { e.target.checked ? setSelectedLabourIds(filteredBulk.map(l => l.id)) : setSelectedLabourIds([]); }} />
                     <span className={`text-sm font-extrabold ${textMain}`}>Select All ({filteredBulk.length})</span>
                   </label>
                   {filteredBulk.length === 0 && <p className={`text-sm p-4 text-center font-medium ${textMuted}`}>No labourers found.</p>}
                   {filteredBulk.map(lab => (
-                    <label key={lab.id} className={`flex items-center justify-between p-4 cursor-pointer border-b last:border-0 transition-colors ${isDark ? (selectedLabourIds.includes(lab.id) ? 'bg-emerald-900/20 border-slate-700/30' : 'hover:bg-slate-800/50 border-slate-700/30') : (selectedLabourIds.includes(lab.id) ? 'bg-emerald-50 border-slate-200' : 'hover:bg-white border-slate-200')}`}>
+                    <label key={lab.id} className={`flex items-center justify-between p-4 cursor-pointer border-b last:border-0 transition-colors ${isDark ? (selectedLabourIds.includes(lab.id) ? 'bg-emerald-900/20 border-slate-700/30' : 'hover:bg-slate-800/50 border-slate-700/30') : (selectedLabourIds.includes(lab.id) ? 'bg-emerald-50 border-slate-200' : 'hover:bg-slate-50 border-slate-200')}`}>
                       <div className="flex items-center gap-3">
                         <input type="checkbox" className="w-5 h-5 accent-emerald-500 rounded cursor-pointer" checked={selectedLabourIds.includes(lab.id)} onChange={(e) => { e.target.checked ? setSelectedLabourIds([...selectedLabourIds, lab.id]) : setSelectedLabourIds(selectedLabourIds.filter(id => id !== lab.id)); }} />
                         <div><span className={`text-sm md:text-base font-bold block ${selectedLabourIds.includes(lab.id) ? (isDark ? 'text-emerald-300' : 'text-emerald-700') : textMain}`}>{tn(lab.name)} <span className={`text-[10px] ml-1 font-medium ${textMuted}`}>ID:{lab.loginId}</span></span></div>
@@ -1145,7 +1157,12 @@ export default function AdminDashboard() {
                     </label>
                   ))}
                 </div>
-                {fullScreenList === "work" && (<button onClick={() => setFullScreenList(null)} className="w-full mt-4 py-4 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-lg shadow-lg active:scale-95 transition-transform">Done Selecting</button>)}
+
+                {fullScreenList === "work" && (
+                  <button onClick={() => setFullScreenList(null)} className="w-full mt-4 py-4 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-lg shadow-lg active:scale-95 transition-transform">
+                    Done Selecting
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -1157,8 +1174,8 @@ export default function AdminDashboard() {
             <div className={`border rounded-2xl p-6 shadow-xl flex flex-col md:flex-row gap-6 mt-6 transition-all ${cardBg}`}>
               <div className="w-full md:w-1/3 flex flex-col gap-4">
                 <h2 className="text-xl font-extrabold mb-2 text-orange-500 flex items-center gap-2"><CheckSquare size={22} /> Bulk Khuraak (Weekly)</h2>
-                <div><label className={`block text-xs font-bold mb-1 ${textMuted}`}>Date</label><input type="date" value={bulkKharchaDate} onChange={(e) => setBulkKharchaDate(e.target.value)} className={`w-full rounded-lg px-3 py-2.5 outline-none font-medium transition-all border ${inputBg}`} required /></div>
-                <div><label className="block text-xs font-extrabold text-orange-500 mb-1">Amount (For All Selected)</label><input type="number" value={bulkKharchaAmount} onChange={(e) => setBulkKharchaAmount(e.target.value)} className={`w-full rounded-lg px-3 py-2.5 outline-none font-extrabold text-lg transition-all border ${isDark ? 'bg-slate-900/80 border-orange-500/50 focus:border-orange-400 text-orange-100' : 'bg-orange-50 border-orange-300 focus:border-orange-500 text-orange-800'}`} placeholder="e.g. 1000" /></div>
+                <div><label className={`block text-xs font-bold mb-1 ${textMuted}`}>Date</label><input type="date" value={bulkKharchaDate} onChange={(e) => setBulkKharchaDate(e.target.value)} style={{ colorScheme: isDark ? 'dark' : 'light' }} className={`w-full rounded-lg px-3 py-2.5 outline-none font-medium transition-all border ${inputBg}`} required /></div>
+                <div><label className="block text-xs font-extrabold text-orange-500 mb-1">Amount (For All Selected)</label><input type="number" value={bulkKharchaAmount} onChange={(e) => setBulkKharchaAmount(e.target.value)} className={`w-full rounded-lg px-3 py-2.5 outline-none font-extrabold text-lg transition-all border ${isDark ? 'bg-slate-900/80 border-orange-500/50 focus:border-orange-400 text-orange-100' : '!bg-white border-orange-300 focus:border-orange-500 text-orange-800'}`} placeholder="e.g. 1000" /></div>
                 <button onClick={handleAddBulkKharcha} className="w-full mt-auto py-3.5 bg-orange-600 hover:bg-orange-500 text-white rounded-xl font-bold transition-all shadow-lg active:scale-95">Submit Bulk Khuraak</button>
               </div>
 
@@ -1167,24 +1184,24 @@ export default function AdminDashboard() {
                   <label className={`text-xs md:text-sm font-extrabold uppercase tracking-wider flex items-center gap-2 ${textMain}`}>
                     Select Labourers <span className={`px-2 py-0.5 rounded-md ${isDark ? 'bg-orange-500/20 text-orange-400' : 'bg-orange-100 text-orange-700 border border-orange-200'}`}>{selectedKharchaIds.length} Selected</span>
                   </label>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
                     <div className="relative flex-1">
-                      <Search size={14} className="absolute left-2.5 top-1/2 transform -translate-y-1/2 text-slate-400" />
-                      <input type="text" placeholder="Search..." value={searchBulkKharcha} onChange={(e) => setSearchBulkKharcha(e.target.value)} className={`pl-8 pr-3 py-2 rounded-lg text-sm outline-none w-full sm:w-48 transition-all border ${inputBg}`} />
+                      <Search size={14} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" />
+                      <input type="text" placeholder="Search name..." value={searchBulkKharcha} onChange={(e) => setSearchBulkKharcha(e.target.value)} className={`pl-9 pr-3 py-2.5 rounded-xl text-sm outline-none w-full sm:w-56 transition-all border ${inputBg}`} />
                     </div>
-                    <button onClick={() => setFullScreenList(fullScreenList === "kharcha" ? null : "kharcha")} className={`p-2 rounded-lg border transition-colors ${isDark ? 'bg-slate-800 hover:bg-slate-700 border-slate-600 text-slate-300' : 'bg-white hover:bg-slate-50 border-slate-300 text-slate-600 shadow-sm'}`}>
-                      {fullScreenList === "kharcha" ? <Minimize2 size={18}/> : <Maximize2 size={18}/>}
+                    <button onClick={() => setFullScreenList(fullScreenList === "kharcha" ? null : "kharcha")} className={`p-2.5 rounded-xl border transition-colors ${isDark ? 'bg-slate-800 hover:bg-slate-700 border-slate-600 text-slate-300' : 'bg-white hover:bg-slate-50 border-slate-300 text-slate-600 shadow-sm'}`} title={fullScreenList === "kharcha" ? "Minimize" : "Full Screen"}>
+                      {fullScreenList === "kharcha" ? <Minimize2 size={20}/> : <Maximize2 size={20}/>}
                     </button>
                   </div>
                 </div>
 
-                <div className={`border rounded-xl overflow-y-auto custom-scrollbar shadow-inner flex-1 ${fullScreenList === "kharcha" ? "" : "max-h-75"} ${isDark ? 'bg-slate-900/60 border-slate-700/60' : 'bg-slate-50 border-slate-200'}`}>
-                  <label className={`flex items-center gap-3 p-4 cursor-pointer border-b sticky top-0 backdrop-blur z-10 ${isDark ? 'hover:bg-slate-800/80 border-slate-700/50 bg-slate-900/95' : 'hover:bg-slate-100 border-slate-200 bg-white/95'}`}>
+                <div className={`border rounded-xl overflow-y-auto custom-scrollbar shadow-inner flex-1 ${fullScreenList === "kharcha" ? "" : "max-h-75"} ${isDark ? 'bg-slate-900/60 border-slate-700/60' : 'bg-white border-slate-200'}`}>
+                  <label className={`flex items-center gap-3 p-4 cursor-pointer border-b sticky top-0 backdrop-blur z-10 ${isDark ? 'hover:bg-slate-800/80 border-slate-700/50 bg-slate-900/95' : 'hover:bg-slate-50 border-slate-200 bg-white/95'}`}>
                     <input type="checkbox" className="w-5 h-5 accent-orange-500 rounded cursor-pointer" checked={selectedKharchaIds.length === filteredBulkKharcha.length && filteredBulkKharcha.length > 0} onChange={(e) => { e.target.checked ? setSelectedKharchaIds(filteredBulkKharcha.map(l => l.id)) : setSelectedKharchaIds([]); }} />
                     <span className={`text-sm font-extrabold ${textMain}`}>Select All ({filteredBulkKharcha.length})</span>
                   </label>
                   {filteredBulkKharcha.map(lab => (
-                    <label key={lab.id} className={`flex items-center justify-between p-4 cursor-pointer border-b last:border-0 transition-colors ${isDark ? (selectedKharchaIds.includes(lab.id) ? 'bg-orange-900/20 border-slate-700/30' : 'hover:bg-slate-800/50 border-slate-700/30') : (selectedKharchaIds.includes(lab.id) ? 'bg-orange-50 border-slate-200' : 'hover:bg-white border-slate-200')}`}>
+                    <label key={lab.id} className={`flex items-center justify-between p-4 cursor-pointer border-b last:border-0 transition-colors ${isDark ? (selectedKharchaIds.includes(lab.id) ? 'bg-orange-900/20 border-slate-700/30' : 'hover:bg-slate-800/50 border-slate-700/30') : (selectedKharchaIds.includes(lab.id) ? 'bg-orange-50 border-slate-200' : 'hover:bg-slate-50 border-slate-200')}`}>
                       <div className="flex items-center gap-3">
                         <input type="checkbox" className="w-5 h-5 accent-orange-500 rounded cursor-pointer" checked={selectedKharchaIds.includes(lab.id)} onChange={(e) => { e.target.checked ? setSelectedKharchaIds([...selectedKharchaIds, lab.id]) : setSelectedKharchaIds(selectedKharchaIds.filter(id => id !== lab.id)); }} />
                         <div><span className={`text-sm md:text-base font-bold block ${selectedKharchaIds.includes(lab.id) ? (isDark ? 'text-orange-300' : 'text-orange-700') : textMain}`}>{tn(lab.name)}</span></div>
@@ -1200,31 +1217,13 @@ export default function AdminDashboard() {
               <h2 className="text-xl font-extrabold mb-4 text-orange-500 flex items-center gap-2"><Wallet size={24} /> Single Expense (Kisi ek ko paise dena)</h2>
               <form onSubmit={handleAddKharcha} className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
                 
-                {/* 🟢 NAYA: Searchable Smart Dropdown For Single Kharcha */}
                 <div className="relative">
                   <label className={`block text-xs font-bold mb-1 ${textMuted}`}>Search & Select Labour</label>
-                  <input
-                    type="text"
-                    placeholder="Search name..."
-                    className={`w-full rounded-lg px-3 py-2 outline-none font-medium transition-all border ${inputBg}`}
-                    value={kharchaSearchQuery}
-                    onChange={(e) => {
-                      setKharchaSearchQuery(e.target.value);
-                      setKharchaLabourId(""); 
-                    }}
-                    required
-                  />
+                  <input type="text" placeholder="Search name..." className={`w-full rounded-lg px-3 py-2 outline-none font-medium transition-all border ${inputBg}`} value={kharchaSearchQuery} onChange={(e) => { setKharchaSearchQuery(e.target.value); setKharchaLabourId(""); }} required />
                   {kharchaSearchQuery && !kharchaLabourId && (
                     <ul className={`absolute z-50 w-full max-h-48 overflow-y-auto mt-1 rounded-md border shadow-2xl ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
                       {currentLabourers.filter(l => l.name.toLowerCase().includes(kharchaSearchQuery.toLowerCase())).map(l => (
-                        <li 
-                          key={l.id} 
-                          className={`p-3 text-sm font-bold cursor-pointer border-b last:border-0 ${isDark ? 'hover:bg-slate-700 border-slate-700/50 text-white' : 'hover:bg-slate-50 border-slate-100 text-slate-800'}`}
-                          onClick={() => {
-                            setKharchaLabourId(l.id);
-                            setKharchaSearchQuery(tn(l.name));
-                          }}
-                        >
+                        <li key={l.id} className={`p-3 text-sm font-bold cursor-pointer border-b last:border-0 ${isDark ? 'hover:bg-slate-700 border-slate-700/50 text-white' : 'hover:bg-slate-50 border-slate-100 text-slate-800'}`} onClick={() => { setKharchaLabourId(l.id); setKharchaSearchQuery(tn(l.name)); }}>
                           {tn(l.name)} <span className={`text-[10px] ml-1 ${textMuted}`}>{l.loginId}</span>
                         </li>
                       ))}
@@ -1235,7 +1234,7 @@ export default function AdminDashboard() {
                   )}
                 </div>
 
-                <div><label className="block text-xs font-extrabold text-orange-500 mb-1">Amount (₹)</label><input type="number" value={kharchaAmount} onChange={(e) => setKharchaAmount(e.target.value)} className={`w-full rounded-lg px-3 py-2 outline-none font-bold transition-all border ${isDark ? 'bg-slate-900/50 border-orange-500/50 focus:border-orange-400 text-orange-100' : 'bg-orange-50 border-orange-300 focus:border-orange-500 text-orange-800'}`} placeholder="e.g. 500" required /></div>
+                <div><label className="block text-xs font-extrabold text-orange-500 mb-1">Amount (₹)</label><input type="number" value={kharchaAmount} onChange={(e) => setKharchaAmount(e.target.value)} className={`w-full rounded-lg px-3 py-2 outline-none font-bold transition-all border ${isDark ? 'bg-slate-900/50 border-orange-500/50 focus:border-orange-400 text-orange-100' : '!bg-white border-orange-300 focus:border-orange-500 text-orange-800'}`} placeholder="e.g. 500" required /></div>
                 <button type="submit" className="w-full py-2.5 bg-orange-600 hover:bg-orange-500 text-white rounded-lg font-bold transition shadow-md active:scale-95">Add Single Expense</button>
               </form>
             </div>
@@ -1245,8 +1244,6 @@ export default function AdminDashboard() {
         {/* ===================== ADVANCE (PESHGI) TAB ===================== */}
         {activeTab === "peshgi" && (
           <div className="space-y-6 animate-in fade-in duration-300">
-            
-            {/* 🟢 NAYA: PESHGI FULLSCREEN SELECTOR LAYOUT */}
             <div className={`border rounded-2xl p-6 shadow-xl flex flex-col md:flex-row gap-6 transition-all ${cardBg}`}>
               
               <div className="w-full md:w-1/3 flex flex-col gap-4">
@@ -1254,13 +1251,12 @@ export default function AdminDashboard() {
                 <form onSubmit={handleAddPeshgi} className="flex flex-col gap-4">
                   <div>
                     <label className={`block text-xs font-bold mb-1 ${textMuted}`}>Date</label>
-                    <input type="date" value={peshgiDate} onChange={(e) => setPeshgiDate(e.target.value)} className={`w-full rounded-lg px-3 py-2.5 outline-none font-medium transition-all border ${inputBg}`} required />
+                    <input type="date" value={peshgiDate} onChange={(e) => setPeshgiDate(e.target.value)} style={{ colorScheme: isDark ? 'dark' : 'light' }} className={`w-full rounded-lg px-3 py-2.5 outline-none font-medium transition-all border ${inputBg}`} required />
                   </div>
                   
-                  {/* Selected Status UI */}
-                  <div className={`p-3 rounded-lg border ${peshgiLabourId ? (isDark ? 'bg-emerald-900/20 border-emerald-500/30' : 'bg-emerald-50 border-emerald-200') : (isDark ? 'bg-slate-900/50 border-slate-700' : 'bg-slate-50 border-slate-200')}`}>
+                  <div className={`p-3 rounded-lg border ${peshgiLabourId ? (isDark ? 'bg-indigo-900/20 border-indigo-500/30' : 'bg-indigo-50 border-indigo-200') : (isDark ? 'bg-slate-900/50 border-slate-700' : 'bg-slate-50 border-slate-200')}`}>
                     <label className={`block text-xs font-bold mb-1 ${textMuted}`}>Selected Labourer</label>
-                    <p className={`font-extrabold ${peshgiLabourId ? (isDark ? 'text-emerald-400' : 'text-emerald-700') : textMuted}`}>
+                    <p className={`font-extrabold ${peshgiLabourId ? (isDark ? 'text-indigo-400' : 'text-indigo-700') : textMuted}`}>
                       {peshgiLabourId ? tn(currentLabourers.find(l => l.id === peshgiLabourId)?.name || "") : "Please select from the list ➔"}
                     </p>
                   </div>
@@ -1276,7 +1272,7 @@ export default function AdminDashboard() {
 
                   <div>
                     <label className={`block text-xs font-extrabold mb-1 ${peshgiType === 'add' ? 'text-rose-500' : 'text-emerald-500'}`}>Amount (₹)</label>
-                    <input type="number" value={peshgiAmount} onChange={(e) => setPeshgiAmount(e.target.value)} className={`w-full rounded-lg px-3 py-2.5 outline-none text-lg font-bold transition-all border ${peshgiType === 'add' ? (isDark ? 'bg-slate-900/80 border-rose-500/50 focus:border-rose-400 text-rose-100' : 'bg-rose-50 border-rose-300 focus:border-rose-500 text-rose-800') : (isDark ? 'bg-slate-900/80 border-emerald-500/50 focus:border-emerald-400 text-emerald-100' : 'bg-emerald-50 border-emerald-300 focus:border-emerald-500 text-emerald-800')}`} placeholder="e.g. 5000" required />
+                    <input type="number" value={peshgiAmount} onChange={(e) => setPeshgiAmount(e.target.value)} className={`w-full rounded-lg px-3 py-2.5 outline-none text-lg font-bold transition-all border ${peshgiType === 'add' ? (isDark ? 'bg-slate-900/80 border-rose-500/50 focus:border-rose-400 text-rose-100' : '!bg-white border-rose-300 focus:border-rose-500 text-rose-800') : (isDark ? 'bg-slate-900/80 border-emerald-500/50 focus:border-emerald-400 text-emerald-100' : '!bg-white border-emerald-300 focus:border-emerald-500 text-emerald-800')}`} placeholder="e.g. 5000" required />
                   </div>
 
                   <button type="submit" className={`w-full py-3.5 text-white rounded-xl font-bold transition-all shadow-lg active:scale-95 mt-2 ${peshgiType === 'add' ? 'bg-rose-600 hover:bg-rose-500 shadow-rose-500/20' : 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-500/20'}`}>
@@ -1285,30 +1281,29 @@ export default function AdminDashboard() {
                 </form>
               </div>
 
-              {/* Peshgi Selection List (Fullscreen Support) */}
               <div className={fullScreenList === "peshgi" ? `fixed inset-0 z-[120] p-4 md:p-8 flex flex-col animate-in zoom-in-95 duration-200 ${isDark ? 'bg-[#0f172a]' : 'bg-slate-50'}` : `w-full md:w-2/3 border-t md:border-t-0 md:border-l pt-4 md:pt-0 md:pl-6 flex flex-col ${isDark ? 'border-slate-700/50' : 'border-slate-200'}`}>
                 <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-3 gap-3">
                   <label className={`text-xs md:text-sm font-extrabold uppercase tracking-wider flex items-center gap-2 ${textMain}`}>
                     Select Target Labourer
                   </label>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
                     <div className="relative flex-1">
                       <Search size={14} className="absolute left-2.5 top-1/2 transform -translate-y-1/2 text-slate-400" />
-                      <input type="text" placeholder="Search..." value={searchPeshgi} onChange={(e) => setSearchPeshgi(e.target.value)} className={`pl-8 pr-3 py-2 rounded-lg text-sm outline-none w-full sm:w-48 transition-all border ${inputBg}`} />
+                      <input type="text" placeholder="Search name..." value={searchPeshgi} onChange={(e) => setSearchPeshgi(e.target.value)} className={`pl-9 pr-3 py-2.5 rounded-xl text-sm outline-none w-full sm:w-56 transition-all border ${inputBg}`} />
                     </div>
-                    <button onClick={() => setFullScreenList(fullScreenList === "peshgi" ? null : "peshgi")} className={`p-2 rounded-lg border transition-colors ${isDark ? 'bg-slate-800 hover:bg-slate-700 border-slate-600 text-slate-300' : 'bg-white hover:bg-slate-50 border-slate-300 text-slate-600 shadow-sm'}`}>
-                      {fullScreenList === "peshgi" ? <Minimize2 size={18}/> : <Maximize2 size={18}/>}
+                    <button onClick={() => setFullScreenList(fullScreenList === "peshgi" ? null : "peshgi")} className={`p-2.5 rounded-xl border transition-colors ${isDark ? 'bg-slate-800 hover:bg-slate-700 border-slate-600 text-slate-300' : 'bg-white hover:bg-slate-50 border-slate-300 text-slate-600 shadow-sm'}`} title={fullScreenList === "peshgi" ? "Minimize" : "Full Screen"}>
+                      {fullScreenList === "peshgi" ? <Minimize2 size={20}/> : <Maximize2 size={20}/>}
                     </button>
                   </div>
                 </div>
 
-                <div className={`border rounded-xl overflow-y-auto custom-scrollbar shadow-inner flex-1 ${fullScreenList === "peshgi" ? "" : "max-h-75"} ${isDark ? 'bg-slate-900/60 border-slate-700/60' : 'bg-slate-50 border-slate-200'}`}>
+                <div className={`border rounded-xl overflow-y-auto custom-scrollbar shadow-inner flex-1 ${fullScreenList === "peshgi" ? "" : "max-h-75"} ${isDark ? 'bg-slate-900/60 border-slate-700/60' : 'bg-white border-slate-200'}`}>
                   {filteredPeshgi.length === 0 && <p className={`text-sm p-4 text-center font-medium ${textMuted}`}>No labourers found.</p>}
                   {filteredPeshgi.map(lab => (
-                    <label key={lab.id} className={`flex items-center justify-between p-4 cursor-pointer border-b last:border-0 transition-colors ${peshgiLabourId === lab.id ? (isDark ? 'bg-emerald-900/20 border-slate-700/30' : 'bg-emerald-50 border-slate-200') : (isDark ? 'hover:bg-slate-800/50 border-slate-700/30' : 'hover:bg-white border-slate-200')}`}>
+                    <label key={lab.id} className={`flex items-center justify-between p-4 cursor-pointer border-b last:border-0 transition-colors ${peshgiLabourId === lab.id ? (isDark ? 'bg-indigo-900/20 border-indigo-500/30' : 'bg-indigo-50 border-slate-200') : (isDark ? 'hover:bg-slate-800/50 border-slate-700/30' : 'hover:bg-slate-50 border-slate-200')}`}>
                       <div className="flex items-center gap-3">
-                        <input type="radio" name="peshgiSelector" className="w-5 h-5 accent-emerald-500 rounded-full cursor-pointer" checked={peshgiLabourId === lab.id} onChange={() => setPeshgiLabourId(lab.id)} />
-                        <div><span className={`text-sm md:text-base font-bold block ${peshgiLabourId === lab.id ? (isDark ? 'text-emerald-400' : 'text-emerald-700') : textMain}`}>{tn(lab.name)} <span className={`text-[10px] ml-1 font-medium ${textMuted}`}>ID:{lab.loginId}</span></span></div>
+                        <input type="radio" name="peshgiSelector" className="w-5 h-5 accent-indigo-500 rounded-full cursor-pointer" checked={peshgiLabourId === lab.id} onChange={() => setPeshgiLabourId(lab.id)} />
+                        <div><span className={`text-sm md:text-base font-bold block ${peshgiLabourId === lab.id ? (isDark ? 'text-indigo-400' : 'text-indigo-700') : textMain}`}>{tn(lab.name)} <span className={`text-[10px] ml-1 font-medium ${textMuted}`}>ID:{lab.loginId}</span></span></div>
                       </div>
                     </label>
                   ))}
@@ -1317,13 +1312,12 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            {/* Peshgi History Table */}
             <div className={`border rounded-2xl p-6 shadow-xl transition-all ${cardBg}`}>
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-4 gap-2">
                 <label className={`text-sm font-extrabold uppercase tracking-wider ${textMain}`}>Transaction History</label>
               </div>
 
-              <div className={`border rounded-xl max-h-100 overflow-y-auto custom-scrollbar shadow-inner ${isDark ? 'bg-slate-900/60 border-slate-700/60' : 'bg-slate-50 border-slate-200'}`}>
+              <div className={`border rounded-xl max-h-100 overflow-y-auto custom-scrollbar shadow-inner ${isDark ? 'bg-slate-900/60 border-slate-700/60' : 'bg-white border-slate-200'}`}>
                 <table className="w-full text-left border-collapse">
                   <thead className={`text-[10px] uppercase tracking-wider sticky top-0 z-10 border-b ${tableHeader}`}>
                     <tr><th className="p-3 font-bold">Labour Name</th><th className="p-3 font-bold">Location</th><th className="p-3 font-bold text-right text-rose-500">Total Advance</th></tr>
@@ -1337,20 +1331,20 @@ export default function AdminDashboard() {
 
                       return (
                         <React.Fragment key={lab.id}>
-                          <tr onClick={() => setExpandedPeshgiLabourId(isExpanded ? null : lab.id)} className={`transition-colors cursor-pointer ${tableRowHover} ${isExpanded ? (isDark ? 'bg-slate-800/40' : 'bg-slate-100') : ''}`}>
+                          <tr onClick={() => setExpandedPeshgiLabourId(isExpanded ? null : lab.id)} className={`transition-colors cursor-pointer ${tableRowHover} ${isExpanded ? (isDark ? 'bg-slate-800/40' : 'bg-slate-50') : ''}`}>
                             <td className="p-3 font-bold flex items-center gap-2"><span className={textMuted}>{isExpanded ? <ChevronDown size={16}/> : <ChevronRight size={16}/>}</span> {tn(lab.name)}</td>
                             <td className={`p-3 text-xs font-medium ${textMuted}`}>{tn(lab.paya) || "-"}</td>
                             <td className={`p-3 text-right font-extrabold ${totalPeshgi > 0 ? (isDark ? 'text-rose-400' : 'text-rose-600') : textMuted}`}>₹{totalPeshgi.toLocaleString()}</td>
                           </tr>
                           
                           {isExpanded && (
-                            <tr className={isDark ? "bg-slate-950/80" : "bg-white"}>
+                            <tr className={isDark ? "bg-slate-950/80" : "bg-slate-50"}>
                               <td colSpan={3} className="p-4 border-l-4 border-rose-500">
                                 <h4 className={`text-xs font-extrabold uppercase mb-3 flex items-center gap-2 ${textMuted}`}><History size={14}/> Transaction History</h4>
                                 {peshgiHistory.length === 0 ? (<p className={`text-xs italic font-medium ${textMuted}`}>Koi advance history nahi hai.</p>) : (
                                   <div className="space-y-2">
                                     {peshgiHistory.map((entry:any) => (
-                                      <div key={entry.id} className={`flex justify-between items-center px-3 py-2 rounded-lg border ${isDark ? 'bg-slate-900 border-slate-700/50' : 'bg-slate-50 border-slate-200 shadow-sm'}`}>
+                                      <div key={entry.id} className={`flex justify-between items-center px-3 py-2 rounded-lg border ${isDark ? 'bg-slate-900 border-slate-700/50' : 'bg-white border-slate-200 shadow-sm'}`}>
                                         <span className={`text-xs font-bold ${textMain}`}>{entry.date}</span>
                                         {entry.peshgi! > 0 ? (
                                           <span className={`text-xs font-bold px-2 py-1 rounded border ${isDark ? 'text-rose-400 bg-rose-500/10 border-rose-500/20' : 'text-rose-700 bg-rose-100 border-rose-200'}`}>Diya (Given): ₹{entry.peshgi}</span>
