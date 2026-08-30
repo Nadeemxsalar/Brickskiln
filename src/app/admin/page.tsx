@@ -35,7 +35,7 @@ export default function AdminDashboard() {
   const [dashboardView, setDashboardView] = useState<"card" | "matrix">("card");
   const [isFullscreenMatrix, setIsFullscreenMatrix] = useState(false);
 
-  // 🟢 NAYA: Monthly Matrix State
+  // 🟢 Monthly Matrix State
   const [matrixMonth, setMatrixMonth] = useState(() => {
     const today = new Date();
     return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
@@ -635,7 +635,7 @@ export default function AdminDashboard() {
   const filteredPeshgi = currentLabourers.filter(l => l.name.toLowerCase().includes(searchPeshgi.toLowerCase()));
   const filteredDownload = currentLabourers.filter(l => l.name.toLowerCase().includes(searchDownload.toLowerCase()) || (l.loginId && l.loginId.includes(searchDownload)));
 
-  // 🟢 FIXED: CSS Theme Classes for Absolute Override (Avoiding Global .inputField bleeding)
+  // CSS Theme Classes for Absolute Override
   const isDark = theme === "dark";
   const bgMain = isDark ? "bg-[#0f172a] text-white" : "bg-slate-50 text-slate-900";
   const navBg = isDark ? "bg-[#0f172a]/90 border-slate-700/50" : "bg-white/90 border-slate-200 shadow-sm";
@@ -644,7 +644,6 @@ export default function AdminDashboard() {
   const textMuted = isDark ? "text-slate-400" : "text-slate-500";
   const textMain = isDark ? "text-white" : "text-slate-900";
   
-  // High-Specificity Input Background override to stop external CSS from making it black
   const inputBg = isDark ? "!bg-slate-900/50 !border-slate-600 focus:border-blue-500 !text-white placeholder-slate-500" : "!bg-white !border-slate-300 focus:border-blue-500 !text-slate-900 placeholder-slate-400 shadow-sm";
   
   const tableHeader = isDark ? "bg-slate-800 text-slate-300 border-slate-700" : "bg-slate-100 text-slate-700 border-slate-300";
@@ -652,7 +651,7 @@ export default function AdminDashboard() {
   const tableRowHover = isDark ? "hover:bg-slate-800/40" : "hover:bg-slate-50";
   const modalInner = isDark ? "bg-slate-950 border-slate-700" : "bg-slate-50 border-slate-200";
 
-  // 🟢 NAYA: PREMIUM MONTHLY MATRIX TABLE
+  // 🟢 NAYA: RESPONSIVE MONTHLY MATRIX TABLE 
   const renderMatrixTable = () => {
     // Grand Total Calculation for current month
     const grandMonthTotal = filteredDashboard.reduce((acc, lab) => {
@@ -664,12 +663,12 @@ export default function AdminDashboard() {
 
     return (
       <div className={`flex flex-col h-full ${isDark ? 'bg-[#0f172a]' : 'bg-white'}`}>
-        <div className={`flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 px-5 py-4 border-b z-40 shadow-sm ${isDark ? 'border-slate-800 bg-slate-900' : 'border-slate-200 bg-slate-50'}`}>
+        <div className={`flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 px-4 md:px-5 py-3 md:py-4 border-b z-40 shadow-sm ${isDark ? 'border-slate-800 bg-slate-900' : 'border-slate-200 bg-slate-50'}`}>
           <div>
             <h3 className={`font-extrabold text-sm md:text-base flex items-center gap-2 ${textMain}`}><Table size={18} className="text-emerald-500"/> Monthly Paye Ledger</h3>
             <p className={`text-xs font-semibold mt-1 ${textMuted}`}>Selected Month: {matrixMonth}</p>
           </div>
-          <div className="flex items-center gap-3 w-full sm:w-auto">
+          <div className="flex items-center gap-2 md:gap-3 w-full sm:w-auto">
             <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border shadow-sm w-full sm:w-auto ${isDark ? 'bg-slate-800 border-slate-700' : '!bg-white !border-slate-300'}`}>
               <CalendarDays size={16} className={textMuted}/>
               <input 
@@ -677,12 +676,12 @@ export default function AdminDashboard() {
                 value={matrixMonth} 
                 onChange={(e) => setMatrixMonth(e.target.value)} 
                 style={{ colorScheme: isDark ? 'dark' : 'light' }}
-                className={`outline-none text-sm font-bold border-none p-0 m-0 !bg-transparent w-full ${isDark ? '!text-white' : '!text-slate-900'}`} 
+                className={`outline-none text-xs md:text-sm font-bold border-none p-0 m-0 !bg-transparent w-full ${isDark ? '!text-white' : '!text-slate-900'}`} 
                 required 
               />
             </div>
-            <button onClick={() => setIsFullscreenMatrix(!isFullscreenMatrix)} className={`p-2.5 rounded-lg border shadow-sm transition-all hover:scale-105 active:scale-95 ${isDark ? 'bg-slate-700 hover:bg-slate-600 border-slate-600 text-white' : 'bg-white hover:bg-slate-100 border-slate-300 text-slate-800'}`}>
-              {isFullscreenMatrix ? <Minimize2 size={18}/> : <Maximize2 size={18}/>}
+            <button onClick={() => setIsFullscreenMatrix(!isFullscreenMatrix)} className={`p-2 md:p-2.5 rounded-lg border shadow-sm transition-all hover:scale-105 active:scale-95 ${isDark ? 'bg-slate-700 hover:bg-slate-600 border-slate-600 text-white' : 'bg-white hover:bg-slate-100 border-slate-300 text-slate-800'}`}>
+              {isFullscreenMatrix ? <Minimize2 size={16} className="md:w-[18px] md:h-[18px]"/> : <Maximize2 size={16} className="md:w-[18px] md:h-[18px]"/>}
             </button>
           </div>
         </div>
@@ -691,13 +690,23 @@ export default function AdminDashboard() {
           <table className="w-full text-left border-collapse min-w-max">
             <thead>
               <tr>
-                <th className={`sticky top-0 left-0 z-[50] p-4 text-xs uppercase tracking-widest font-black border-b-2 border-r-2 ${isDark ? 'bg-slate-900 text-slate-400 border-slate-700' : 'bg-slate-100 text-slate-500 border-slate-200 shadow-[2px_2px_5px_rgba(0,0,0,0.02)]'}`}>Date ↓ \ Name →</th>
+                {/* 🟢 MOBILE OPTIMIZED LEFT HEADER */}
+                <th className={`sticky top-0 left-0 z-[50] p-2 md:p-4 text-[9px] md:text-xs uppercase tracking-widest font-black border-b-2 border-r-2 whitespace-nowrap ${isDark ? 'bg-slate-900 text-slate-400 border-slate-700' : 'bg-slate-100 text-slate-500 border-slate-200 shadow-[2px_2px_5px_rgba(0,0,0,0.02)]'}`}>
+                  <span className="hidden sm:inline">Date ↓ \ Name →</span>
+                  <span className="sm:hidden">Date</span>
+                </th>
+                
                 {filteredDashboard.map(lab => (
-                  <th key={lab.id} className={`sticky top-0 z-[40] p-4 text-sm font-extrabold whitespace-nowrap text-center border-b-2 ${isDark ? 'bg-slate-800 text-white border-slate-700 shadow-md' : 'bg-white text-slate-800 border-slate-200 shadow-sm'}`}>
+                  <th key={lab.id} className={`sticky top-0 z-[40] p-2 md:p-4 text-xs md:text-sm font-extrabold whitespace-nowrap text-center border-b-2 ${isDark ? 'bg-slate-800 text-white border-slate-700 shadow-md' : 'bg-white text-slate-800 border-slate-200 shadow-sm'}`}>
                     {tn(lab.name)}
                   </th>
                 ))}
-                <th className={`sticky top-0 right-0 z-[50] p-4 text-xs uppercase tracking-widest font-black text-center text-emerald-600 border-b-2 border-l-2 ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-emerald-50 border-emerald-200 shadow-[-2px_2px_5px_rgba(0,0,0,0.02)]'}`}>Daily Total</th>
+                
+                {/* 🟢 MOBILE OPTIMIZED RIGHT HEADER */}
+                <th className={`sticky top-0 right-0 z-[50] p-2 md:p-4 text-[9px] md:text-xs uppercase tracking-widest font-black text-center text-emerald-600 border-b-2 border-l-2 whitespace-nowrap ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-emerald-50 border-emerald-200 shadow-[-2px_2px_5px_rgba(0,0,0,0.02)]'}`}>
+                  <span className="hidden sm:inline">Daily Total</span>
+                  <span className="sm:hidden">Total</span>
+                </th>
               </tr>
             </thead>
             
@@ -707,10 +716,16 @@ export default function AdminDashboard() {
               )}
               {allMatrixDates.map((date) => {
                 let dayTotalPaye = 0;
+                // Ex: "2026-08-30" -> split returns ["2026", "08", "30"]
+                const dParts = date.split('-'); 
+                const shortDate = `${dParts[2]}/${dParts[1]}`; 
+
                 return (
                   <tr key={date} className={`transition-colors hover:bg-blue-50/50 dark:hover:bg-blue-900/20`}>
-                    <td className={`sticky left-0 z-[30] p-4 border-b border-r-2 font-bold whitespace-nowrap text-sm ${isDark ? 'bg-slate-900 border-slate-800 text-slate-300 shadow-[2px_0_5px_rgba(0,0,0,0.2)]' : 'bg-slate-50 border-slate-100 text-slate-600 shadow-[2px_0_5px_rgba(0,0,0,0.02)]'}`}>
-                      {date}
+                    {/* 🟢 MOBILE OPTIMIZED DATE CELL */}
+                    <td className={`sticky left-0 z-[30] p-2 md:p-4 border-b border-r-2 font-bold whitespace-nowrap text-[10px] md:text-sm ${isDark ? 'bg-slate-900 border-slate-800 text-slate-300 shadow-[2px_0_5px_rgba(0,0,0,0.2)]' : 'bg-slate-50 border-slate-100 text-slate-600 shadow-[2px_0_5px_rgba(0,0,0,0.02)]'}`}>
+                      <span className="hidden sm:inline">{date}</span>
+                      <span className="sm:hidden">{shortDate}</span>
                     </td>
                     
                     {filteredDashboard.map(lab => {
@@ -718,9 +733,9 @@ export default function AdminDashboard() {
                       const paye = entry?.payeCount || 0;
                       dayTotalPaye += paye;
                       return (
-                        <td key={lab.id} className={`p-4 border-b text-center font-bold text-base transition-colors ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
+                        <td key={lab.id} className={`p-2 md:p-4 border-b text-center font-bold text-sm md:text-base transition-colors ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
                           {entry?.isLeave ? (
-                            <span className="text-rose-500 text-[10px] px-2 py-1 rounded-md border border-rose-500/20 bg-rose-500/10">L</span>
+                            <span className="text-rose-500 text-[9px] md:text-[10px] px-1.5 md:px-2 py-0.5 md:py-1 rounded-md border border-rose-500/20 bg-rose-500/10">L</span>
                           ) : (
                             paye > 0 ? (
                               <span className="text-blue-700 dark:text-blue-200 font-extrabold">{paye}</span>
@@ -732,7 +747,8 @@ export default function AdminDashboard() {
                       )
                     })}
                     
-                    <td className={`sticky right-0 z-[30] p-4 border-b border-l-2 text-center font-black text-lg text-emerald-600 ${isDark ? 'bg-slate-900 border-slate-800 shadow-[-2px_0_5px_rgba(0,0,0,0.2)]' : 'bg-emerald-50/30 border-slate-100 shadow-[-2px_0_5px_rgba(0,0,0,0.02)]'}`}>
+                    {/* 🟢 MOBILE OPTIMIZED TOTAL CELL */}
+                    <td className={`sticky right-0 z-[30] p-2 md:p-4 border-b border-l-2 text-center font-black text-sm md:text-lg text-emerald-600 ${isDark ? 'bg-slate-900 border-slate-800 shadow-[-2px_0_5px_rgba(0,0,0,0.2)]' : 'bg-emerald-50/30 border-slate-100 shadow-[-2px_0_5px_rgba(0,0,0,0.02)]'}`}>
                       {dayTotalPaye > 0 ? dayTotalPaye : <span className="opacity-30 font-normal">-</span>}
                     </td>
                   </tr>
@@ -741,19 +757,22 @@ export default function AdminDashboard() {
             </tbody>
             <tfoot>
               <tr>
-                <td className={`sticky bottom-0 left-0 z-[50] p-4 text-xs uppercase tracking-widest font-black border-t-2 border-r-2 ${isDark ? 'bg-slate-900 text-slate-400 border-slate-700' : 'bg-slate-200 text-slate-700 border-slate-300'}`}>Month Total ↓</td>
+                <td className={`sticky bottom-0 left-0 z-[50] p-2 md:p-4 text-[9px] md:text-xs uppercase tracking-widest font-black border-t-2 border-r-2 whitespace-nowrap ${isDark ? 'bg-slate-900 text-slate-400 border-slate-700' : 'bg-slate-200 text-slate-700 border-slate-300'}`}>
+                   <span className="hidden sm:inline">Month Total ↓</span>
+                   <span className="sm:hidden">Total</span>
+                </td>
                 {filteredDashboard.map(lab => {
                   const totalLabPaye = (lab.entries || []).reduce((sum: number, e: any) => {
                     if(e.date.startsWith(matrixMonth)) return sum + (e.payeCount || 0);
                     return sum;
                   }, 0);
                   return (
-                    <td key={lab.id} className={`sticky bottom-0 z-[40] p-4 text-base font-extrabold text-center border-t-2 ${isDark ? 'bg-slate-800 text-blue-300 border-slate-700 shadow-[0_-2px_5px_rgba(0,0,0,0.1)]' : 'bg-slate-100 text-blue-700 border-slate-300 shadow-[0_-2px_5px_rgba(0,0,0,0.02)]'}`}>
+                    <td key={lab.id} className={`sticky bottom-0 z-[40] p-2 md:p-4 text-sm md:text-base font-extrabold text-center border-t-2 ${isDark ? 'bg-slate-800 text-blue-300 border-slate-700 shadow-[0_-2px_5px_rgba(0,0,0,0.1)]' : 'bg-slate-100 text-blue-700 border-slate-300 shadow-[0_-2px_5px_rgba(0,0,0,0.02)]'}`}>
                       {totalLabPaye > 0 ? totalLabPaye : '-'}
                     </td>
                   )
                 })}
-                <td className={`sticky bottom-0 right-0 z-[50] p-4 text-lg font-black text-center text-emerald-600 border-t-2 border-l-2 ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-emerald-100 border-emerald-300'}`}>
+                <td className={`sticky bottom-0 right-0 z-[50] p-2 md:p-4 text-base md:text-lg font-black text-center text-emerald-600 border-t-2 border-l-2 ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-emerald-100 border-emerald-300'}`}>
                   {grandMonthTotal > 0 ? grandMonthTotal : '-'}
                 </td>
               </tr>
@@ -777,7 +796,6 @@ export default function AdminDashboard() {
     );
   }
 
-  // 🟢 NAYA: 100% TRUE FULLSCREEN RENDERER
   if (isFullscreenMatrix && dashboardView === "matrix" && activeTab === "dashboard") {
     return (
       <div className="fixed inset-0 z-[999999] w-screen h-[100dvh] m-0 p-0 overflow-hidden flex flex-col bg-white dark:bg-[#0f172a]">
@@ -834,6 +852,7 @@ export default function AdminDashboard() {
         </div>
       )}
 
+      {/* IMPORT MODAL */}
       {showImportModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className={`w-full max-w-lg p-6 shadow-2xl relative rounded-2xl border ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
