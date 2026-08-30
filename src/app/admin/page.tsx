@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { saveLabourData, getLabourData, fetchFromFirebase } from "../../lib/storage";
 import { Labour, DailyEntry, Bhatta } from "../../types";
-import { Menu, X, FileText, LayoutDashboard, IndianRupee, Users, Building2, Layers, Wallet, Settings, Check, LogOut, CheckSquare, Search, AlertCircle, CheckCircle, TrendingDown, TrendingUp, ChevronRight, ChevronDown, History, BarChart3, Upload, FileSpreadsheet, Download, FileDown, Maximize2, Minimize2, UserMinus, ShieldAlert, Trash2, Plus, Sun, Moon, Bell, Key, LockKeyhole, Loader2, CloudDownload, RefreshCcw, DatabaseBackup, Globe, Trash } from "lucide-react";
+import { Menu, X, FileText, LayoutDashboard, IndianRupee, Users, Building2, Layers, Wallet, Settings, Check, LogOut, CheckSquare, Search, AlertCircle, CheckCircle, TrendingDown, TrendingUp, ChevronRight, ChevronDown, History, BarChart3, Upload, FileSpreadsheet, Download, FileDown, Maximize2, Minimize2, UserMinus, ShieldAlert, Trash2, Plus, Sun, Moon, Bell, Key, LockKeyhole, Loader2, CloudDownload, RefreshCcw, DatabaseBackup, Globe, Trash, LayoutList, Table, CalendarDays } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid } from 'recharts';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -32,17 +32,26 @@ export default function AdminDashboard() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"dashboard" | "eent" | "kharcha" | "peshgi" | "manage" | "download" | "role" | "recycle">("dashboard");
 
+  const [dashboardView, setDashboardView] = useState<"card" | "matrix">("card");
+  const [isFullscreenMatrix, setIsFullscreenMatrix] = useState(false);
+
+  // 🟢 NAYA: Monthly Matrix State
+  const [matrixMonth, setMatrixMonth] = useState(() => {
+    const today = new Date();
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+  });
+
   const [toast, setToast] = useState<{msg: string, type: "success" | "error"} | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
 
-  // 🟢 NAYA: Language & Theme
   const [theme, setTheme] = useState<"dark" | "light">("light");
   const [lang, setLang] = useState<"en" | "hi">("en");
+  const [hindiTranslations, setHindiTranslations] = useState<Record<string, string>>({});
   
   const [adminList, setAdminList] = useState<string[]>([]);
   const [newAdminId, setNewAdminId] = useState("");
 
-  const [fullScreenList, setFullScreenList] = useState<"work" | "kharcha" | null>(null);
+  const [fullScreenList, setFullScreenList] = useState<"work" | "kharcha" | "peshgi" | null>(null);
 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -62,6 +71,7 @@ export default function AdminDashboard() {
   const [entryDate, setEntryDate] = useState(new Date().toISOString().split("T")[0]);
 
   const [kharchaLabourId, setKharchaLabourId] = useState("");
+  const [kharchaSearchQuery, setKharchaSearchQuery] = useState("");
   const [kharchaAmount, setKharchaAmount] = useState("");
 
   const [selectedKharchaIds, setSelectedKharchaIds] = useState<string[]>([]);
@@ -83,14 +93,13 @@ export default function AdminDashboard() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [lastSeenNotifId, setLastSeenNotifId] = useState<string | null>(null);
 
-  // 🟢 NAYA: Admin Security PIN System
   const [adminPin, setAdminPin] = useState<string | null>(null);
   const [showPinModal, setShowPinModal] = useState<{action: "delete" | "reset" | "restore" | "hard_delete", targetId: string} | null>(null);
   const [pinInput, setPinInput] = useState("");
   const [newPinSetup, setNewPinSetup] = useState("");
 
-  // NAYA: Translation Helper Function
   const t = (en: string, hi: string) => lang === "hi" ? hi : en;
+  const tn = (text: string) => lang === "hi" ? (hindiTranslations[text] || text) : text;
 
   const showToast = (msg: string, type: "success" | "error" = "success") => {
     setToast({ msg, type });
@@ -112,21 +121,21 @@ export default function AdminDashboard() {
       if (savedLang) setLang(savedLang);
 
       const savedPin = localStorage.getItem("bhatta_admin_pin");
-      if (savedPin) setAdminPin(atob(savedPin)); // Simple decode
+      if (savedPin) setAdminPin(atob(savedPin)); 
 
       const savedNotifId = localStorage.getItem("bhatta_last_notif_id");
       if (savedNotifId) setLastSeenNotifId(savedNotifId);
 
-      const savedAdmins = JSON.parse(localStorage.getItem("bhatta_admins") || "[]");
-      if (savedAdmins.length === 0) {
-        const defaultAdmins = ["admin", "nadeemxsalar@gmail.com", "realheronadeem", "9368218331"];
-        localStorage.setItem("bhatta_admins", JSON.stringify(defaultAdmins));
-        setAdminList(defaultAdmins);
-      } else {
-        setAdminList(savedAdmins);
-      }
-
       try {
+        const cloudAdmins = await fetchFromFirebase("bhatta_admins");
+        if (cloudAdmins && cloudAdmins.length > 0) {
+          localStorage.setItem("bhatta_admins", JSON.stringify(cloudAdmins));
+          setAdminList(cloudAdmins);
+        } else {
+          const defaultAdmins = ["admin", "nadeemxsalar@gmail.com"];
+          setAdminList(defaultAdmins);
+        }
+
         const cloudLab = await fetchFromFirebase("bhatta_labourers");
         if (cloudLab) localStorage.setItem("bhatta_labourers", JSON.stringify(cloudLab));
         
@@ -152,16 +161,11 @@ export default function AdminDashboard() {
       }
 
       let data: any[] = getLabourData("bhatta_labourers") || [];
-      let dataModified = false;
-      
       const migratedData = data.map((lab: any) => {
         let newLab = { ...lab };
-        if (!newLab.bhattaId) { newLab.bhattaId = "bhatta_default"; dataModified = true; }
-        if (!newLab.loginId) { 
-          newLab.loginId = newLab.phone || Math.floor(1000 + Math.random() * 9000).toString(); 
-          dataModified = true; 
-        }
-        if (newLab.isDeleted === undefined) { newLab.isDeleted = false; dataModified = true; } // NAYA: Soft Delete Flag
+        if (!newLab.bhattaId) newLab.bhattaId = "bhatta_default";
+        if (!newLab.loginId) newLab.loginId = newLab.phone || Math.floor(1000 + Math.random() * 9000).toString(); 
+        if (newLab.isDeleted === undefined) newLab.isDeleted = false;
         
         const safeEntries = Array.isArray(newLab.entries) ? newLab.entries : [];
         newLab.entries = safeEntries.map((e: any) => ({
@@ -170,13 +174,40 @@ export default function AdminDashboard() {
         return newLab;
       });
       
-      if (dataModified) saveLabourData("bhatta_labourers", migratedData);
+      saveLabourData("bhatta_labourers", migratedData);
       setLabourers(migratedData);
       setIsLoading(false);
     };
 
     initApp();
   }, [router]);
+
+  // 🟢 NAYA: Error-Free Silent Translation
+  useEffect(() => {
+    if (lang === "hi" && labourers.length > 0) {
+      const translateNames = async () => {
+        const newTranslations: Record<string, string> = { ...hindiTranslations };
+        let hasNew = false;
+        
+        for (const lab of labourers) {
+          if (!newTranslations[lab.name]) {
+            try {
+              const res = await fetch(`https://inputtools.google.com/request?text=${encodeURIComponent(lab.name)}&itc=hi-t-i0-und&num=1`);
+              const data = await res.json();
+              if (data && data[0] === 'SUCCESS') {
+                newTranslations[lab.name] = data[1][0][1][0];
+                hasNew = true;
+              }
+            } catch (e) {
+              // Fail silently: will fallback to English automatically
+            }
+          }
+        }
+        if (hasNew) setHindiTranslations(newTranslations);
+      };
+      translateNames();
+    }
+  }, [lang, labourers]);
 
   useEffect(() => {
     let maxId = 1000;
@@ -210,7 +241,6 @@ export default function AdminDashboard() {
     router.push("/");
   };
 
-  // 🟢 NAYA: Security PIN Set
   const handleSetPin = (e: React.FormEvent) => {
     e.preventDefault();
     if(newPinSetup.length !== 4) return showToast("PIN 4 digit ka hona chahiye!", "error");
@@ -220,7 +250,6 @@ export default function AdminDashboard() {
     showToast("Security PIN set ho gaya!", "success");
   };
 
-  // 🟢 NAYA: Execute Critical Action with PIN
   const executeSecureAction = (e: React.FormEvent) => {
     e.preventDefault();
     if (adminPin && pinInput !== adminPin) {
@@ -264,22 +293,34 @@ export default function AdminDashboard() {
     if(!newAdminId) return;
     const finalId = newAdminId.toLowerCase().trim();
     if(adminList.includes(finalId)) return showToast("Ye Admin pehle se add hai!", "error");
+    
     const updated = [...adminList, finalId];
-    setAdminList(updated); localStorage.setItem("bhatta_admins", JSON.stringify(updated));
-    setNewAdminId(""); showToast("Naya Admin successfully add ho gaya!", "success");
+    setAdminList(updated);
+    localStorage.setItem("bhatta_admins", JSON.stringify(updated));
+    saveLabourData("bhatta_admins", updated); 
+    setNewAdminId(""); 
+    showToast("Naya Admin successfully add ho gaya!", "success");
   };
 
   const handleRemoveAdmin = (idToRemove: string) => {
     if(idToRemove === "admin" || idToRemove === "nadeemxsalar@gmail.com") return showToast("Master Admin ko delete nahi kiya ja sakta!", "error");
     const updated = adminList.filter(a => a !== idToRemove);
-    setAdminList(updated); localStorage.setItem("bhatta_admins", JSON.stringify(updated));
+    setAdminList(updated);
+    localStorage.setItem("bhatta_admins", JSON.stringify(updated));
+    saveLabourData("bhatta_admins", updated); 
     showToast("Admin ki power hata di gayi hai!", "success");
   };
 
-  // 🟢 NAYA: Filter Only Active Labourers (Not Deleted)
   const currentLabourers = labourers.filter(lab => lab.bhattaId === activeBhattaId && !lab.isDeleted);
   const deletedLabourers = labourers.filter(lab => lab.bhattaId === activeBhattaId && lab.isDeleted);
   const activeBhattaName = bhattas.find(b => b.id === activeBhattaId)?.name || "Bhatta";
+
+  // 🟢 NAYA: Advanced Monthly Ledger Logic
+  const [matrixYear, matrixMonthNum] = matrixMonth.split("-").map(Number);
+  const daysInMatrixMonth = new Date(matrixYear, matrixMonthNum, 0).getDate();
+  const allMatrixDates = Array.from({ length: daysInMatrixMonth }, (_, i) => {
+    return `${matrixMonth}-${String(daysInMatrixMonth - i).padStart(2, '0')}`;
+  });
 
   const notifications = currentLabourers.flatMap(lab => 
     (lab.entries || [])
@@ -310,7 +351,7 @@ export default function AdminDashboard() {
 
   const chartData = currentLabourers.map(lab => {
     const stats = getStats(lab);
-    return { name: lab.name, Earned: stats.earned, Expenses: stats.kharcha, Advance: stats.peshgi };
+    return { name: tn(lab.name), Earned: stats.earned, Expenses: stats.kharcha, Advance: stats.peshgi };
   }).sort((a, b) => b.Earned - a.Earned).slice(0, 10); 
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -377,7 +418,6 @@ export default function AdminDashboard() {
     e.target.value = ''; 
   };
 
-  // 🟢 NAYA: Offline Backup Download
   const handleExportBackup = () => {
     const dataStr = JSON.stringify(labourers, null, 2);
     const blob = new Blob([dataStr], { type: "application/json" });
@@ -389,12 +429,10 @@ export default function AdminDashboard() {
     showToast(t("Database Exported Successfully!", "डेटाबेस बैकअप हो गया!"), "success");
   };
 
-  // 🟢 NAYA: Professional PDF Update for Master Summary
   const downloadAllSummaryPDF = () => {
     if(currentLabourers.length === 0) return showToast("Koi data nahi hai!", "error");
     const doc = new jsPDF();
     
-    // Watermark
     doc.setTextColor(230, 230, 230);
     doc.setFontSize(60);
     doc.text("BHATTA PRO", 40, 150, { angle: 45 });
@@ -417,7 +455,7 @@ export default function AdminDashboard() {
     const tableData = currentLabourers.map(lab => {
       const stats = getStats(lab);
       const netText = stats.netBalance < 0 ? `-${Math.abs(stats.netBalance)} (Len)` : `${stats.netBalance} (Den)`;
-      return [lab.name, lab.loginId, stats.earned.toLocaleString(), stats.kharcha.toLocaleString(), stats.peshgi.toLocaleString(), netText];
+      return [tn(lab.name), lab.loginId, stats.earned.toLocaleString(), stats.kharcha.toLocaleString(), stats.peshgi.toLocaleString(), netText];
     });
 
     autoTable(doc, { 
@@ -430,7 +468,6 @@ export default function AdminDashboard() {
       alternateRowStyles: { fillColor: [245, 247, 250] }
     });
 
-    // Signature Area
     const finalY = (doc as any).lastAutoTable.finalY + 30;
     doc.setFontSize(12);
     doc.setTextColor(0, 0, 0);
@@ -467,7 +504,7 @@ export default function AdminDashboard() {
     const newLabour: any = { id: Date.now().toString(), bhattaId: activeBhattaId, name, loginId: finalLoginId, phone, ratePerThousand: 0, ratePerPaya: Number(ratePaya) || 0, paya: paya || "-", isDeleted: false, totalBricks: 0, totalPaye: 0, totalKharcha: 0, totalPeshgi: 0, entries: [] };
     const updatedList = [...labourers, newLabour];
     setLabourers(updatedList); saveLabourData("bhatta_labourers", updatedList);
-    setName(""); setPhone(""); setRatePaya(""); setPaya(""); showToast(t("Labour Added!", "मजदूर जोड़ दिया गया!"), "success");
+    setName(""); setPhone(""); setRatePaya(""); setPaya(""); showToast(t("Labour Added!", "मजदूर जोड़ दिया गया!"), "success");
   };
 
   const handleAddWork = (e: React.FormEvent) => {
@@ -529,7 +566,7 @@ export default function AdminDashboard() {
       return lab;
     });
     setLabourers(updatedLabourers); saveLabourData("bhatta_labourers", updatedLabourers);
-    setKharchaAmount(""); setKharchaLabourId(""); showToast(t("Expense added!", "खर्चा दर्ज हो गया!"), "success");
+    setKharchaAmount(""); setKharchaLabourId(""); setKharchaSearchQuery(""); showToast(t("Expense added!", "खर्चा दर्ज हो गया!"), "success");
   };
 
   const handleAddBulkKharcha = (e: React.FormEvent) => {
@@ -575,7 +612,7 @@ export default function AdminDashboard() {
       return lab;
     });
     setLabourers(updatedLabourers); saveLabourData("bhatta_labourers", updatedLabourers);
-    setPeshgiAmount(""); setPeshgiLabourId(""); showToast(t(`Advance ${peshgiType === 'add' ? 'Added' : 'Returned'}!`, `पेशगी सफलतापूर्वक ${peshgiType === 'add' ? 'जोड़ी' : 'जमा'} हो गई!`), "success");
+    setPeshgiAmount(""); setPeshgiLabourId(""); showToast(t(`Advance ${peshgiType === 'add' ? 'Added' : 'Returned'}!`, `पेशगी सफलतापूर्वक ${peshgiType === 'add' ? 'जोड़ी' : 'जमा'} हो गई!`), "success");
   };
 
   const handleSaveLabourEdit = (id: string) => {
@@ -606,10 +643,116 @@ export default function AdminDashboard() {
   const inputBg = isDark ? "bg-slate-900/50 border-slate-600 focus:border-blue-500 text-white placeholder-slate-500" : "bg-slate-50 border-slate-300 focus:border-blue-500 text-slate-900 placeholder-slate-400 shadow-sm";
   const textMuted = isDark ? "text-slate-400" : "text-slate-500";
   const textMain = isDark ? "text-white" : "text-slate-900";
-  const tableHeader = isDark ? "bg-slate-900/60 text-slate-400 border-slate-700" : "bg-slate-100 text-slate-600 border-slate-200";
+  
+  const tableHeader = isDark ? "bg-slate-800 text-slate-300 border-slate-700" : "bg-slate-100 text-slate-700 border-slate-300";
   const tableBody = isDark ? "divide-slate-700/50 text-slate-200" : "divide-slate-200 text-slate-700";
   const tableRowHover = isDark ? "hover:bg-slate-800/40" : "hover:bg-slate-50";
   const modalInner = isDark ? "bg-slate-950 border-slate-700" : "bg-slate-50 border-slate-200";
+
+  // 🟢 NAYA: PREMIUM MONTHLY MATRIX TABLE
+  const renderMatrixTable = () => {
+    // Grand Total Calculation for current month
+    const grandMonthTotal = filteredDashboard.reduce((acc, lab) => {
+      return acc + (lab.entries || []).reduce((sum: number, e: any) => {
+        if(e.date.startsWith(matrixMonth)) return sum + (e.payeCount || 0);
+        return sum;
+      }, 0);
+    }, 0);
+
+    return (
+      <div className={`flex flex-col h-full ${isDark ? 'bg-[#0f172a]' : 'bg-white'}`}>
+        <div className={`flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 px-5 py-4 border-b z-40 shadow-sm ${isDark ? 'border-slate-800 bg-slate-900' : 'border-slate-200 bg-slate-50'}`}>
+          <div>
+            <h3 className={`font-extrabold text-sm md:text-base flex items-center gap-2 ${textMain}`}><Table size={18} className="text-emerald-500"/> Monthly Paye Ledger</h3>
+            <p className={`text-xs font-semibold mt-1 ${textMuted}`}>Selected Month: {matrixMonth}</p>
+          </div>
+          <div className="flex items-center gap-3 w-full sm:w-auto">
+            <div className="flex items-center gap-2 bg-white dark:bg-slate-800 px-3 py-1.5 rounded-lg border shadow-sm dark:border-slate-700 w-full sm:w-auto">
+              <CalendarDays size={16} className={textMuted}/>
+              <input type="month" value={matrixMonth} onChange={(e) => setMatrixMonth(e.target.value)} className={`outline-none text-sm font-bold bg-transparent w-full ${textMain}`} required />
+            </div>
+            <button onClick={() => setIsFullscreenMatrix(!isFullscreenMatrix)} className={`p-2.5 rounded-lg border shadow-sm transition-all hover:scale-105 active:scale-95 ${isDark ? 'bg-slate-700 hover:bg-slate-600 border-slate-600 text-white' : 'bg-white hover:bg-slate-100 border-slate-300 text-slate-800'}`}>
+              {isFullscreenMatrix ? <Minimize2 size={18}/> : <Maximize2 size={18}/>}
+            </button>
+          </div>
+        </div>
+
+        <div className={`overflow-auto custom-scrollbar flex-1 relative ${isFullscreenMatrix ? 'h-[calc(100vh-80px)]' : 'min-h-[400px] max-h-[550px]'}`}>
+          <table className="w-full text-left border-collapse min-w-max">
+            <thead>
+              <tr>
+                <th className={`sticky top-0 left-0 z-[50] p-4 text-xs uppercase tracking-widest font-black border-b-2 border-r-2 ${isDark ? 'bg-slate-900 text-slate-400 border-slate-700' : 'bg-slate-100 text-slate-500 border-slate-200 shadow-[2px_2px_5px_rgba(0,0,0,0.02)]'}`}>Date ↓ \ Name →</th>
+                {filteredDashboard.map(lab => (
+                  <th key={lab.id} className={`sticky top-0 z-[40] p-4 text-sm font-extrabold whitespace-nowrap text-center border-b-2 ${isDark ? 'bg-slate-800 text-white border-slate-700 shadow-md' : 'bg-white text-slate-800 border-slate-200 shadow-sm'}`}>
+                    {tn(lab.name)}
+                  </th>
+                ))}
+                <th className={`sticky top-0 right-0 z-[50] p-4 text-xs uppercase tracking-widest font-black text-center text-emerald-600 border-b-2 border-l-2 ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-emerald-50 border-emerald-200 shadow-[-2px_2px_5px_rgba(0,0,0,0.02)]'}`}>Daily Total</th>
+              </tr>
+            </thead>
+            
+            <tbody className={tableBody}>
+              {allMatrixDates.length === 0 && (
+                <tr><td colSpan={filteredDashboard.length + 2} className={`p-10 text-center italic font-medium ${textMuted}`}>No dates available.</td></tr>
+              )}
+              {allMatrixDates.map((date) => {
+                let dayTotalPaye = 0;
+                return (
+                  <tr key={date} className={`transition-colors hover:bg-blue-50/50 dark:hover:bg-blue-900/20`}>
+                    <td className={`sticky left-0 z-[30] p-4 border-b border-r-2 font-bold whitespace-nowrap text-sm ${isDark ? 'bg-slate-900 border-slate-800 text-slate-300 shadow-[2px_0_5px_rgba(0,0,0,0.2)]' : 'bg-slate-50 border-slate-100 text-slate-600 shadow-[2px_0_5px_rgba(0,0,0,0.02)]'}`}>
+                      {date}
+                    </td>
+                    
+                    {filteredDashboard.map(lab => {
+                      const entry = (lab.entries || []).find((e: any) => e.date === date);
+                      const paye = entry?.payeCount || 0;
+                      dayTotalPaye += paye;
+                      return (
+                        <td key={lab.id} className={`p-4 border-b text-center font-bold text-base transition-colors ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
+                          {entry?.isLeave ? (
+                            <span className="text-rose-500 text-[10px] px-2 py-1 rounded-md border border-rose-500/20 bg-rose-500/10">L</span>
+                          ) : (
+                            paye > 0 ? (
+                              <span className="text-blue-700 dark:text-blue-200 font-extrabold">{paye}</span>
+                            ) : (
+                              <span className="text-slate-300 dark:text-slate-700 font-normal">-</span>
+                            )
+                          )}
+                        </td>
+                      )
+                    })}
+                    
+                    <td className={`sticky right-0 z-[30] p-4 border-b border-l-2 text-center font-black text-lg text-emerald-600 ${isDark ? 'bg-slate-900 border-slate-800 shadow-[-2px_0_5px_rgba(0,0,0,0.2)]' : 'bg-emerald-50/30 border-slate-100 shadow-[-2px_0_5px_rgba(0,0,0,0.02)]'}`}>
+                      {dayTotalPaye > 0 ? dayTotalPaye : <span className="opacity-30 font-normal">-</span>}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td className={`sticky bottom-0 left-0 z-[50] p-4 text-xs uppercase tracking-widest font-black border-t-2 border-r-2 ${isDark ? 'bg-slate-900 text-slate-400 border-slate-700' : 'bg-slate-200 text-slate-700 border-slate-300'}`}>Month Total ↓</td>
+                {filteredDashboard.map(lab => {
+                  const totalLabPaye = (lab.entries || []).reduce((sum: number, e: any) => {
+                    if(e.date.startsWith(matrixMonth)) return sum + (e.payeCount || 0);
+                    return sum;
+                  }, 0);
+                  return (
+                    <td key={lab.id} className={`sticky bottom-0 z-[40] p-4 text-base font-extrabold text-center border-t-2 ${isDark ? 'bg-slate-800 text-blue-300 border-slate-700 shadow-[0_-2px_5px_rgba(0,0,0,0.1)]' : 'bg-slate-100 text-blue-700 border-slate-300 shadow-[0_-2px_5px_rgba(0,0,0,0.02)]'}`}>
+                      {totalLabPaye > 0 ? totalLabPaye : '-'}
+                    </td>
+                  )
+                })}
+                <td className={`sticky bottom-0 right-0 z-[50] p-4 text-lg font-black text-center text-emerald-600 border-t-2 border-l-2 ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-emerald-100 border-emerald-300'}`}>
+                  {grandMonthTotal > 0 ? grandMonthTotal : '-'}
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    );
+  };
 
   if (isLoading) {
     return (
@@ -619,10 +762,16 @@ export default function AdminDashboard() {
           <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin z-10"></div>
           <CloudDownload size={24} className="absolute text-blue-500 z-10" />
         </div>
-        <h2 className="text-xl font-extrabold tracking-tight bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent animate-pulse">
-          Syncing Bhatta Cloud Data...
-        </h2>
-        <p className={`text-sm mt-2 font-medium ${textMuted}`}>Updating secure records</p>
+        <h2 className="text-xl font-extrabold tracking-tight bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent animate-pulse">Syncing Bhatta Cloud Data...</h2>
+      </div>
+    );
+  }
+
+  // 🟢 NAYA: 100% TRUE FULLSCREEN RENDERER
+  if (isFullscreenMatrix && dashboardView === "matrix" && activeTab === "dashboard") {
+    return (
+      <div className="fixed inset-0 z-[999999] w-screen h-[100dvh] m-0 p-0 overflow-hidden flex flex-col bg-white dark:bg-[#0f172a]">
+        {renderMatrixTable()}
       </div>
     );
   }
@@ -637,16 +786,13 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* ===================== SECURITY PIN MODAL ===================== */}
+      {/* SECURITY PIN MODAL */}
       {showPinModal && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-[150] flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className={`w-full max-w-sm p-6 rounded-2xl shadow-2xl relative border text-center ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
             <button onClick={() => {setShowPinModal(null); setPinInput("");}} className={`absolute top-4 right-4 p-1.5 rounded-lg ${isDark ? 'text-slate-400 hover:text-white bg-slate-800' : 'text-slate-500 hover:text-slate-800 bg-slate-100'}`}><X size={18} /></button>
             <div className="w-14 h-14 bg-rose-500/20 text-rose-500 rounded-full flex items-center justify-center mx-auto mb-4"><LockKeyhole size={28}/></div>
             <h2 className={`text-xl font-bold mb-2 ${textMain}`}>{t("Security PIN Required", "सुरक्षा पिन दर्ज करें")}</h2>
-            <p className={`text-sm mb-6 ${textMuted}`}>
-              {showPinModal.action === "hard_delete" ? "Kripya verify karein ki aap hi Admin hain." : "Kripya verify karein ki aap hi Admin hain."}
-            </p>
             <form onSubmit={executeSecureAction}>
               {adminPin ? (
                 <>
@@ -654,16 +800,14 @@ export default function AdminDashboard() {
                   <button type="submit" className="w-full py-3 bg-rose-600 hover:bg-rose-500 text-white rounded-xl font-bold transition-all shadow-md active:scale-95 flex items-center justify-center gap-2"><Check size={18}/> Confirm Action</button>
                 </>
               ) : (
-                <div className="text-sm text-rose-500 font-medium mb-4">
-                  Aapne abhi tak Security PIN set nahi kiya hai. Pehle 'Manage' tab se PIN set karein.
-                </div>
+                <div className="text-sm text-rose-500 font-medium mb-4">Aapne abhi tak Security PIN set nahi kiya hai. Pehle 'Manage' tab se PIN set karein.</div>
               )}
             </form>
           </div>
         </div>
       )}
 
-      {/* ===================== PASSWORD RESET MODAL ===================== */}
+      {/* PASSWORD RESET MODAL */}
       {resetPasswordId && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[150] flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className={`w-full max-w-sm p-6 rounded-2xl shadow-2xl relative border ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
@@ -673,12 +817,8 @@ export default function AdminDashboard() {
               <h2 className={`text-xl font-bold ${textMain}`}>{t("Create New Password", "नया पासवर्ड बनाएं")}</h2>
             </div>
             <form onSubmit={handleResetPassword} className="space-y-4">
-              <div>
-                <input type="password" value={newPasswordInput} onChange={(e) => setNewPasswordInput(e.target.value)} placeholder="Type new password" required autoFocus className={`w-full rounded-xl px-4 py-3 outline-none font-bold transition-all border ${inputBg}`} />
-              </div>
-              <button type="submit" className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-md active:scale-95">
-                <Check size={18}/> Update Password
-              </button>
+              <input type="password" value={newPasswordInput} onChange={(e) => setNewPasswordInput(e.target.value)} placeholder="Type new password" required autoFocus className={`w-full rounded-xl px-4 py-3 outline-none font-bold transition-all border ${inputBg}`} />
+              <button type="submit" className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-md active:scale-95"><Check size={18}/> Update Password</button>
             </form>
           </div>
         </div>
@@ -689,26 +829,22 @@ export default function AdminDashboard() {
           <div className={`w-full max-w-lg p-6 shadow-2xl relative rounded-2xl border ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
             <button onClick={() => setShowImportModal(false)} className={`absolute top-4 right-4 transition-colors p-1.5 rounded-lg ${isDark ? 'text-slate-400 hover:text-white bg-slate-800' : 'text-slate-500 hover:text-slate-800 bg-slate-100'}`}><X size={20} /></button>
             <h2 className="text-xl font-bold text-emerald-500 mb-2 flex items-center gap-2"><FileSpreadsheet size={24} /> Smart Import Labour Data</h2>
-            <p className={`text-sm mb-5 ${textMuted}`}>Nayi CSV file mein aap poora hisaab ek sath daal sakte hain.</p>
             <div className={`rounded-xl p-4 border mb-6 overflow-x-auto shadow-inner ${modalInner}`}>
-              <p className="text-xs font-bold tracking-widest text-slate-500 uppercase mb-3">Format Columns (Must match exactly)</p>
+              <p className="text-xs font-bold tracking-widest text-slate-500 uppercase mb-3">Format Columns</p>
               <table className="w-full text-left text-[10px] md:text-xs whitespace-nowrap">
-                <thead><tr className={`border-b ${isDark ? 'text-slate-300 border-slate-800' : 'text-slate-700 border-slate-300'}`}>
-                  <th className="pb-2 pr-3 font-semibold text-blue-500">Name*</th><th className="pb-2 pr-3 font-semibold">Mobile</th><th className="pb-2 pr-3 font-semibold">Location</th><th className="pb-2 pr-3 font-semibold text-emerald-500">Rate</th><th className="pb-2 pr-3 font-semibold text-rose-500">Date</th><th className="pb-2 pr-3 font-semibold">Paye</th><th className="pb-2 pr-3 font-semibold">Kharcha</th><th className="pb-2 pr-3 font-semibold">Peshgi</th><th className="pb-2 font-semibold">Remark</th>
-                </tr></thead>
-                <tbody className={`font-mono ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-                  <tr><td className={`pt-2 pr-3 ${textMain}`}>Ramu</td><td className="pt-2 pr-3">987...</td><td className="pt-2 pr-3">L1</td><td className={`pt-2 pr-3 ${textMain}`}>35</td><td className="pt-2 pr-3">2026-08-25</td><td className="pt-2 pr-3 text-emerald-500">500</td><td className="pt-2 pr-3">100</td><td className="pt-2 pr-3">0</td><td className="pt-2">Late</td></tr>
-                </tbody>
+                <thead><tr className={`border-b ${isDark ? 'text-slate-300 border-slate-800' : 'text-slate-700 border-slate-300'}`}><th className="pb-2 pr-3 font-semibold text-blue-500">Name*</th><th className="pb-2 pr-3 font-semibold">Mobile</th><th className="pb-2 pr-3 font-semibold text-emerald-500">Rate</th><th className="pb-2 pr-3 font-semibold text-rose-500">Date</th><th className="pb-2 pr-3 font-semibold">Paye</th></tr></thead>
+                <tbody className={`font-mono ${isDark ? 'text-slate-400' : 'text-slate-600'}`}><tr><td className="pt-2 pr-3">Ramu</td><td className="pt-2 pr-3">987...</td><td className="pt-2 pr-3">35</td><td className="pt-2 pr-3">2026-08-25</td><td className="pt-2 pr-3 text-emerald-500">500</td></tr></tbody>
               </table>
             </div>
             <div className="relative mt-2">
               <input type="file" accept=".csv" id="csv-modal-upload" className="hidden" onChange={handleFileUpload} />
-              <label htmlFor="csv-modal-upload" className="w-full cursor-pointer bg-emerald-600 hover:bg-emerald-500 text-white py-3.5 rounded-xl font-bold flex justify-center items-center gap-2 transition-all shadow-[0_0_15px_rgba(16,185,129,0.3)] active:scale-95"><Upload size={18} /> Select & Upload CSV File</label>
+              <label htmlFor="csv-modal-upload" className="w-full cursor-pointer bg-emerald-600 hover:bg-emerald-500 text-white py-3.5 rounded-xl font-bold flex justify-center items-center gap-2 transition-all active:scale-95"><Upload size={18} /> Select & Upload CSV File</label>
             </div>
           </div>
         </div>
       )}
 
+      {/* NAVBAR */}
       <nav className={`fixed top-0 w-full h-16 backdrop-blur-md border-b z-40 flex items-center justify-between px-4 transition-colors duration-300 ${navBg}`}>
         <div className="flex items-center">
           <button onClick={() => setIsSidebarOpen(true)} className={`p-2 rounded-xl transition-colors ${isDark ? 'hover:bg-slate-800 text-white' : 'hover:bg-slate-100 text-slate-800'}`}><Menu size={28} /></button>
@@ -718,11 +854,7 @@ export default function AdminDashboard() {
           </div>
         </div>
         <div className="flex items-center gap-2 md:gap-3">
-          
-          <button onClick={toggleLanguage} className={`p-2 rounded-full transition-colors font-bold text-xs flex items-center gap-1 ${isDark ? 'bg-slate-800 text-cyan-400 hover:bg-slate-700' : 'bg-slate-100 text-cyan-600 shadow-sm hover:bg-slate-200'}`}>
-            <Globe size={16} /> {lang === "en" ? "HI" : "EN"}
-          </button>
-
+          <button onClick={toggleLanguage} className={`p-2 rounded-full transition-colors font-bold text-xs flex items-center gap-1 ${isDark ? 'bg-slate-800 text-cyan-400 hover:bg-slate-700' : 'bg-slate-100 text-cyan-600 shadow-sm hover:bg-slate-200'}`}><Globe size={16} /> {lang === "en" ? "HI" : "EN"}</button>
           <div className="relative">
             <button onClick={toggleNotifications} className={`p-2 rounded-full transition-colors relative ${isDark ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-100 text-slate-600'}`}>
               <Bell size={20} />
@@ -730,20 +862,12 @@ export default function AdminDashboard() {
             </button>
             {showNotifications && (
               <div className={`absolute right-[-60px] sm:right-0 mt-4 w-[300px] sm:w-80 max-h-[400px] overflow-y-auto custom-scrollbar rounded-xl border shadow-2xl p-2 animate-in fade-in zoom-in-95 duration-200 z-[200] ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
-                <div className="px-3 py-2 border-b mb-2 flex justify-between items-center sticky top-0 bg-inherit z-10">
-                  <h3 className={`font-bold text-sm ${textMain}`}>Recent Labour Notes</h3>
-                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500'}`}>{notifications.length} Total</span>
-                </div>
-                {notifications.length === 0 ? (
-                  <p className={`p-4 text-center text-xs ${textMuted}`}>No notifications yet.</p>
-                ) : (
+                <div className="px-3 py-2 border-b mb-2 flex justify-between items-center sticky top-0 bg-inherit z-10"><h3 className={`font-bold text-sm ${textMain}`}>Recent Labour Notes</h3><span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500'}`}>{notifications.length} Total</span></div>
+                {notifications.length === 0 ? (<p className={`p-4 text-center text-xs ${textMuted}`}>No notifications yet.</p>) : (
                   <div className="space-y-1">
                     {notifications.map(notif => (
                       <div key={notif.id} onClick={() => { router.push(`/labour/${notif.labId}`); setShowNotifications(false); }} className={`p-3 rounded-lg flex flex-col gap-1 transition-colors cursor-pointer ${isDark ? 'hover:bg-slate-800' : 'hover:bg-slate-50'}`}>
-                        <div className="flex justify-between items-start">
-                          <span className={`text-xs font-bold ${textMain} hover:text-blue-500 transition-colors`}>{notif.labName}</span>
-                          <span className={`text-[10px] ${textMuted}`}>{notif.date}</span>
-                        </div>
+                        <div className="flex justify-between items-start"><span className={`text-xs font-bold ${textMain} hover:text-blue-500 transition-colors`}>{tn(notif.labName)}</span><span className={`text-[10px] ${textMuted}`}>{notif.date}</span></div>
                         <p className={`text-xs italic bg-opacity-50 p-1.5 rounded border ${isDark ? 'text-blue-300 bg-blue-900/20 border-blue-500/20' : 'text-blue-700 bg-blue-50 border-blue-200'}`}>"{notif.remark}"</p>
                       </div>
                     ))}
@@ -752,22 +876,18 @@ export default function AdminDashboard() {
               </div>
             )}
           </div>
-
-          <button onClick={toggleTheme} className={`p-2 rounded-full transition-colors ${isDark ? 'bg-slate-800 text-yellow-400 hover:bg-slate-700' : 'bg-slate-100 text-slate-600 shadow-sm hover:bg-slate-200'}`}>
-            {isDark ? <Sun size={18} /> : <Moon size={18} />}
-          </button>
+          <button onClick={toggleTheme} className={`p-2 rounded-full transition-colors ${isDark ? 'bg-slate-800 text-yellow-400 hover:bg-slate-700' : 'bg-slate-100 text-slate-600 shadow-sm hover:bg-slate-200'}`}>{isDark ? <Sun size={18} /> : <Moon size={18} />}</button>
           <button onClick={handleLogout} className="flex items-center gap-2 px-3 py-1.5 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-lg transition text-sm font-bold border border-red-500/20"><LogOut size={16}/> <span className="hidden sm:inline">Logout</span></button>
         </div>
       </nav>
 
+      {/* SIDEBAR */}
       {isSidebarOpen && <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-30" onClick={() => setIsSidebarOpen(false)}></div>}
-
       <div className={`fixed top-0 left-0 h-full w-72 border-r z-40 transform transition-transform duration-300 ease-in-out flex flex-col ${sideBg} ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className={`flex items-center justify-between p-4 border-b ${isDark ? 'border-slate-700/50' : 'border-slate-200'}`}>
           <h2 className={`text-xl font-bold ${textMain}`}>{t("Admin Menu", "व्यवस्थापक मेनू")}</h2>
           <button onClick={() => setIsSidebarOpen(false)} className={`p-2 rounded-xl ${isDark ? 'hover:bg-slate-700 text-slate-300' : 'hover:bg-slate-100 text-slate-600'}`}><X size={24} /></button>
         </div>
-        
         <div className="p-4 space-y-2 flex-1 overflow-y-auto custom-scrollbar">
           <button onClick={() => changeTab("dashboard")} className={`w-full flex items-center gap-3 p-3 rounded-xl transition font-medium ${activeTab === "dashboard" ? "bg-blue-600 text-white shadow-lg shadow-blue-500/30" : (isDark ? "hover:bg-slate-800 text-slate-300" : "hover:bg-slate-100 text-slate-600")}`}><LayoutDashboard size={20} /> {t("Dashboard", "डैशबोर्ड")}</button>
           <button onClick={() => changeTab("manage")} className={`w-full flex items-center gap-3 p-3 rounded-xl transition font-medium ${activeTab === "manage" ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/30" : (isDark ? "hover:bg-slate-800 text-slate-300" : "hover:bg-slate-100 text-slate-600")}`}><Settings size={20} /> {t("Manage & Control", "नियंत्रण")}</button>
@@ -775,12 +895,10 @@ export default function AdminDashboard() {
           <button onClick={() => changeTab("kharcha")} className={`w-full flex items-center gap-3 p-3 rounded-xl transition font-medium ${activeTab === "kharcha" ? "bg-orange-600 text-white shadow-lg shadow-orange-500/30" : (isDark ? "hover:bg-slate-800 text-slate-300" : "hover:bg-slate-100 text-slate-600")}`}><Wallet size={20} /> {t("Expenses", "खर्चा")}</button>
           <button onClick={() => changeTab("peshgi")} className={`w-full flex items-center gap-3 p-3 rounded-xl transition font-medium ${activeTab === "peshgi" ? "bg-rose-600 text-white shadow-lg shadow-rose-500/30" : (isDark ? "hover:bg-slate-800 text-slate-300" : "hover:bg-slate-100 text-slate-600")}`}><IndianRupee size={20} /> {t("Advance (Peshgi)", "पेशगी")}</button>
           <button onClick={() => changeTab("download")} className={`w-full flex items-center gap-3 p-3 rounded-xl transition mt-4 border font-medium ${activeTab === "download" ? "bg-cyan-600 text-white border-transparent shadow-lg shadow-cyan-500/30" : (isDark ? "border-cyan-500/20 hover:bg-slate-800 text-cyan-400" : "border-cyan-200 hover:bg-cyan-50 text-cyan-600")}`}><FileDown size={20} /> {t("Download Receipt", "रसीद डाउनलोड")}</button>
-          
           <div className={`h-px w-full my-4 ${isDark ? 'bg-slate-700/50' : 'bg-slate-200'}`}></div>
           <button onClick={() => changeTab("role")} className={`w-full flex items-center gap-3 p-3 rounded-xl transition font-medium ${activeTab === "role" ? "bg-violet-600 text-white shadow-lg shadow-violet-500/30" : (isDark ? "hover:bg-slate-800 text-violet-400" : "hover:bg-violet-50 text-violet-600")}`}><ShieldAlert size={20} /> Give Power (Admins)</button>
           <button onClick={() => changeTab("recycle")} className={`w-full flex items-center gap-3 p-3 rounded-xl transition font-medium ${activeTab === "recycle" ? "bg-slate-600 text-white shadow-lg" : (isDark ? "hover:bg-slate-800 text-slate-400" : "hover:bg-slate-100 text-slate-500")}`}><Trash size={20} /> {t("Recycle Bin", "रीसायकल बिन")}</button>
         </div>
-
         <div className={`p-4 border-t ${isDark ? 'border-slate-700/50 bg-slate-900/50' : 'border-slate-200 bg-slate-50'}`}>
           <h3 className={`text-xs font-semibold uppercase tracking-wider mb-3 flex items-center gap-2 ${textMuted}`}><Building2 size={14}/> {t("Work Sites", "साइट्स")}</h3>
           <div className="space-y-2 max-h-40 overflow-y-auto mb-3 pr-2 custom-scrollbar">
@@ -805,6 +923,7 @@ export default function AdminDashboard() {
         {/* ===================== DASHBOARD ===================== */}
         {activeTab === "dashboard" && (
           <div className="space-y-6 animate-in fade-in duration-300">
+            
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className={`p-5 rounded-2xl transition-all ${isDark ? 'bg-gradient-to-br from-cyan-900/40 to-slate-900 border border-cyan-500/30 shadow-lg' : 'bg-cyan-50 border border-cyan-200 shadow-sm'}`}>
                 <p className={`text-xs font-semibold uppercase tracking-wider mb-1 ${isDark ? 'text-cyan-300' : 'text-cyan-600'}`}>{t("Total Bhatta Earnings", "कुल भट्ठा कमाई")}</p>
@@ -829,33 +948,43 @@ export default function AdminDashboard() {
 
             <div className={`backdrop-blur-xl border rounded-2xl p-6 transition-all ${cardBg}`}>
               <div className={`flex justify-between items-center mb-4 border-b pb-4 ${isDark ? 'border-slate-700/50' : 'border-slate-200'}`}>
-                <h2 className={`text-lg font-bold flex items-center gap-2 ${textMain}`}><Users size={20} className="text-blue-500"/> {t("Add New Labour", "नया मजदूर जोड़ें")} ({activeBhattaName})</h2>
+                <h2 className={`text-lg font-bold flex items-center gap-2 ${textMain}`}><Users size={20} className="text-blue-500"/> {t("Add New Labour", "नया मजदूर जोड़ें")} ({activeBhattaName})</h2>
                 <button onClick={() => setShowImportModal(true)} className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-all shadow-lg active:scale-95"><Upload size={16} /> Import CSV</button>
               </div>
 
               <form onSubmit={handleAddLabour} className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-4 items-end">
-                <div><label className={`block text-xs font-bold mb-1 ${textMuted}`}>Name</label><input type="text" value={name} onChange={(e) => setName(e.target.value)} className={`w-full rounded-lg px-3 py-2 outline-none transition-all border ${inputBg}`} placeholder="Name" required/></div>
+                <div><label className={`block text-xs font-bold mb-1 ${textMuted}`}>{t("Name", "नाम")}</label><input type="text" value={name} onChange={(e) => setName(e.target.value)} className={`w-full rounded-lg px-3 py-2 outline-none transition-all border ${inputBg}`} placeholder="Name" required/></div>
                 <div><label className="block text-xs font-extrabold text-blue-500 mb-1">Labour ID (Auto)</label><input type="text" value={loginId} onChange={(e) => setLoginId(e.target.value)} className={`w-full rounded-lg px-3 py-2 outline-none font-bold transition-all border ${isDark ? 'bg-slate-900/50 border-blue-500/50 focus:border-blue-400 text-blue-300' : 'bg-blue-50 border-blue-200 focus:border-blue-400 text-blue-700'}`} placeholder="e.g. 1001" /></div>
-                <div><label className={`block text-xs font-bold mb-1 ${textMuted}`}>Mobile</label><input type="text" value={phone} onChange={(e) => setPhone(e.target.value)} className={`w-full rounded-lg px-3 py-2 outline-none transition-all border ${inputBg}`} placeholder="Number" /></div>
-                <div><label className={`block text-xs font-bold mb-1 ${textMuted}`}>Location</label><input type="text" value={paya} onChange={(e) => setPaya(e.target.value)} className={`w-full rounded-lg px-3 py-2 outline-none transition-all border ${inputBg}`} placeholder="e.g. Line 1" /></div>
-                <div><label className="block text-xs font-extrabold text-emerald-500 mb-1">Rate (/Paye)</label><input type="number" value={ratePaya} onChange={(e) => setRatePaya(e.target.value)} className={`w-full rounded-lg px-3 py-2 outline-none font-bold transition-all border ${isDark ? 'bg-slate-900/50 border-emerald-500/50 focus:border-emerald-400 text-emerald-300' : 'bg-emerald-50 border-emerald-200 focus:border-emerald-400 text-emerald-700'}`} placeholder="e.g. 35" required/></div>
-                <button type="submit" className="w-full py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold transition shadow-md md:col-span-1 sm:col-span-2 text-sm active:scale-95">{t("Add", "जोड़ें")}</button>
+                <div><label className={`block text-xs font-bold mb-1 ${textMuted}`}>{t("Mobile", "मोबाइल")}</label><input type="text" value={phone} onChange={(e) => setPhone(e.target.value)} className={`w-full rounded-lg px-3 py-2 outline-none transition-all border ${inputBg}`} placeholder="Number" /></div>
+                <div><label className={`block text-xs font-bold mb-1 ${textMuted}`}>{t("Location", "जगह")}</label><input type="text" value={paya} onChange={(e) => setPaya(e.target.value)} className={`w-full rounded-lg px-3 py-2 outline-none transition-all border ${inputBg}`} placeholder="e.g. Line 1" /></div>
+                <div><label className="block text-xs font-extrabold text-emerald-500 mb-1">{t("Rate (/Paye)", "रेट")}</label><input type="number" value={ratePaya} onChange={(e) => setRatePaya(e.target.value)} className={`w-full rounded-lg px-3 py-2 outline-none font-bold transition-all border ${isDark ? 'bg-slate-900/50 border-emerald-500/50 focus:border-emerald-400 text-emerald-300' : 'bg-emerald-50 border-emerald-200 focus:border-emerald-400 text-emerald-700'}`} placeholder="e.g. 35" required/></div>
+                <button type="submit" className="w-full py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold transition shadow-md md:col-span-1 sm:col-span-2 text-sm active:scale-95">{t("Add", "जोड़ें")}</button>
               </form>
             </div>
 
-            <div className={`backdrop-blur-xl border rounded-2xl p-6 transition-all ${cardBg}`}>
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-                <h2 className={`text-lg font-bold flex items-center gap-3 ${textMain}`}>Overview ({activeBhattaName}) - {filteredDashboard.length} Labourers</h2>
-                <div className="relative"><Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" /><input type="text" placeholder="Search by Name or ID..." value={searchDashboard} onChange={(e) => setSearchDashboard(e.target.value)} className={`pl-9 pr-4 py-2 rounded-lg text-sm outline-none w-full md:w-64 transition-all border ${inputBg}`} /></div>
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mt-6">
+              <h2 className={`text-lg font-bold flex items-center gap-3 ${textMain}`}>{t("Overview", "सारांश")} ({activeBhattaName}) - {filteredDashboard.length} Labourers</h2>
+              <div className="flex items-center gap-2">
+                <div className="relative">
+                  <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" />
+                  <input type="text" placeholder="Search..." value={searchDashboard} onChange={(e) => setSearchDashboard(e.target.value)} className={`pl-9 pr-4 py-2 rounded-lg text-sm outline-none w-full md:w-48 transition-all border ${inputBg}`} />
+                </div>
+                <div className={`p-1 rounded-xl flex items-center gap-1 border shadow-inner ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-200'}`}>
+                  <button onClick={() => setDashboardView("card")} className={`p-2 rounded-lg text-xs font-bold transition-all ${dashboardView === "card" ? (isDark ? "bg-slate-600 text-white shadow-md" : "bg-white text-slate-800 shadow-sm") : (isDark ? "text-slate-400 hover:text-white" : "text-slate-500 hover:text-slate-800")}`}><LayoutList size={16}/></button>
+                  <button onClick={() => setDashboardView("matrix")} className={`p-2 rounded-lg text-xs font-bold transition-all ${dashboardView === "matrix" ? (isDark ? "bg-slate-600 text-white shadow-md" : "bg-white text-slate-800 shadow-sm") : (isDark ? "text-slate-400 hover:text-white" : "text-slate-500 hover:text-slate-800")}`}><Table size={16}/></button>
+                </div>
               </div>
+            </div>
 
+            {/* CARD VIEW */}
+            {dashboardView === "card" && (
               <div className="space-y-4">
                 {filteredDashboard.length === 0 && <p className={`text-center py-4 font-medium ${textMuted}`}>No results found.</p>}
                 {filteredDashboard.map((lab) => {
                   const stats = getStats(lab);
                   return (
                     <div key={lab.id} className={`p-4 rounded-xl border flex flex-col lg:flex-row justify-between items-center gap-4 transition-all ${isDark ? 'bg-slate-900/40 border-slate-700/50 hover:bg-slate-800/60' : 'bg-slate-50 border-slate-200 hover:bg-white hover:shadow-md'}`}>
-                      <div className="flex-1 w-full text-left"><h3 className={`font-extrabold text-xl ${textMain}`}>{lab.name}</h3><p className={`text-sm mt-1 ${textMuted}`}>ID: <span className="text-blue-500 font-bold">{lab.loginId}</span> | {lab.phone}</p></div>
+                      <div className="flex-1 w-full text-left"><h3 className={`font-extrabold text-xl ${textMain}`}>{tn(lab.name)}</h3><p className={`text-sm mt-1 ${textMuted}`}>ID: <span className="text-blue-500 font-bold">{lab.loginId}</span> | {lab.phone}</p></div>
                       <div className="flex-1 w-full flex flex-col sm:flex-row gap-3 justify-start lg:justify-center">
                         <div className={`text-left px-4 py-2 rounded-lg border ${isDark ? 'bg-slate-900/50 border-slate-700/50' : 'bg-white border-slate-200 shadow-sm'}`}><p className="text-emerald-500 text-[10px] font-bold uppercase tracking-wider">Earned</p><p className={`text-lg font-extrabold ${textMain}`}>₹{stats.earned.toLocaleString()}</p></div>
                         <div className={`text-left px-4 py-2 rounded-lg border ${isDark ? 'bg-slate-900/50 border-slate-700/50' : 'bg-white border-slate-200 shadow-sm'}`}><p className="text-orange-500 text-[10px] font-bold uppercase tracking-wider">Expenses</p><p className={`text-lg font-extrabold ${textMain}`}>₹{stats.kharcha.toLocaleString()}</p></div>
@@ -868,32 +997,20 @@ export default function AdminDashboard() {
                   );
                 })}
               </div>
-            </div>
-          </div>
-        )}
+            )}
 
-        {/* ===================== DOWNLOAD RECEIPT TAB (Professional PDF) ===================== */}
-        {activeTab === "download" && (
-          <div className="space-y-6 animate-in fade-in duration-300">
-            <div className={`border rounded-2xl p-8 shadow-xl text-center transition-all ${isDark ? 'bg-gradient-to-br from-cyan-900/30 to-slate-800/80 border-cyan-500/30' : 'bg-gradient-to-br from-cyan-50 to-white border-cyan-200'}`}>
-              <h2 className={`text-2xl font-extrabold mb-3 flex justify-center items-center gap-2 ${isDark ? 'text-cyan-400' : 'text-cyan-600'}`}>
-                <FileSpreadsheet size={28} /> Download Master Summary
-              </h2>
-              <p className={`text-sm mb-6 max-w-lg mx-auto font-medium ${textMuted}`}>
-                Is button se aapke poore bhatte ({activeBhattaName}) ke sabhi labourers ka Total Hisaab ek hi PDF list mein aa jayega. Master checking ke liye best hai.
-              </p>
-              <button onClick={downloadAllSummaryPDF} className="bg-cyan-600 hover:bg-cyan-500 text-white px-8 py-3.5 rounded-xl text-sm font-bold flex items-center gap-2 mx-auto transition-all shadow-[0_0_15px_rgba(6,182,212,0.4)] active:scale-95">
-                <Download size={20}/> Download Summary PDF
-              </button>
-            </div>
+            {/* 🟢 MATRIX VIEW INLINE */}
+            {dashboardView === "matrix" && !isFullscreenMatrix && (
+              <div className={`relative w-full border rounded-xl overflow-hidden shadow-inner flex flex-col min-h-[400px] mt-4 ${isDark ? 'border-slate-800 bg-[#0f172a]' : 'border-slate-200 bg-white'}`}>
+                {renderMatrixTable()}
+              </div>
+            )}
           </div>
         )}
 
         {/* ===================== MANAGE LABOUR TAB ===================== */}
         {activeTab === "manage" && (
           <div className="space-y-6 animate-in fade-in duration-300">
-            
-            {/* 🟢 NAYA: Database Backup Tool */}
             <div className={`border rounded-2xl p-6 shadow-xl transition-all ${cardBg}`}>
                <h2 className={`text-xl font-extrabold mb-4 flex items-center gap-2 ${isDark ? 'text-blue-400' : 'text-blue-600'}`}><DatabaseBackup size={24} /> {t("Database Backup", "डेटाबेस बैकअप")}</h2>
                <div className="flex flex-col md:flex-row items-center gap-4">
@@ -904,7 +1021,6 @@ export default function AdminDashboard() {
                </div>
             </div>
 
-            {/* 🟢 NAYA: Security PIN Setting */}
             <div className={`border rounded-2xl p-6 shadow-xl transition-all ${cardBg}`}>
                <h2 className={`text-xl font-extrabold mb-4 flex items-center gap-2 ${isDark ? 'text-rose-400' : 'text-rose-600'}`}><LockKeyhole size={24} /> {t("Security PIN", "सुरक्षा पिन")}</h2>
                <form onSubmit={handleSetPin} className="flex flex-col md:flex-row items-center gap-4">
@@ -932,7 +1048,7 @@ export default function AdminDashboard() {
               <div className={`overflow-x-auto border rounded-xl ${isDark ? 'border-slate-700/50' : 'border-slate-200'}`}>
                 <table className="w-full text-left border-collapse min-w-[850px]">
                   <thead>
-                    <tr className={`text-xs uppercase tracking-wider border-b ${tableHeader}`}>
+                    <tr className={`text-xs uppercase tracking-wider border-b ${isDark ? 'bg-slate-800 text-slate-300 border-slate-700' : 'bg-slate-100 text-slate-700 border-slate-300'}`}>
                       <th className="p-4 font-bold">Name</th>
                       <th className="p-4 font-bold text-blue-500">Labour ID</th>
                       <th className="p-4 font-bold">Mobile</th>
@@ -941,16 +1057,16 @@ export default function AdminDashboard() {
                       <th className="p-4 font-bold text-center">Actions / Controls</th>
                     </tr>
                   </thead>
-                  <tbody className={`text-sm ${tableBody}`}>
+                  <tbody className={`text-sm ${isDark ? 'divide-slate-700/50 text-slate-200' : 'divide-slate-200 text-slate-700'}`}>
                     {filteredManage.length === 0 && <tr><td colSpan={6} className={`p-4 text-center font-medium ${textMuted}`}>No results found.</td></tr>}
                     {filteredManage.map(lab => {
                       const isEditing = editingLabourId === lab.id;
                       return (
-                        <tr key={lab.id} className={`transition-colors ${tableRowHover}`}>
-                          <td className="p-3">{isEditing ? <input type="text" value={editLabourData?.name} onChange={(e)=>setEditLabourData({...editLabourData!, name: e.target.value})} className={`w-full rounded px-2 py-1.5 outline-none border font-medium ${inputBg}`}/> : <span className="font-semibold">{lab.name}</span>}</td>
+                        <tr key={lab.id} className={`transition-colors ${isDark ? 'hover:bg-slate-800/40' : 'hover:bg-slate-50'}`}>
+                          <td className="p-3">{isEditing ? <input type="text" value={editLabourData?.name} onChange={(e)=>setEditLabourData({...editLabourData!, name: e.target.value})} className={`w-full rounded px-2 py-1.5 outline-none border font-medium ${inputBg}`}/> : <span className="font-semibold">{tn(lab.name)}</span>}</td>
                           <td className="p-3">{isEditing ? <input type="text" value={editLabourData?.loginId} onChange={(e)=>setEditLabourData({...editLabourData!, loginId: e.target.value})} className={`w-full rounded px-2 py-1.5 outline-none border font-bold ${isDark ? 'bg-slate-900 border-blue-500/50 text-blue-300' : 'bg-blue-50 border-blue-300 text-blue-700'}`}/> : <span className="font-extrabold text-blue-500">{lab.loginId}</span>}</td>
                           <td className="p-3">{isEditing ? <input type="text" value={editLabourData?.phone} onChange={(e)=>setEditLabourData({...editLabourData!, phone: e.target.value})} className={`w-full rounded px-2 py-1.5 outline-none border font-medium ${inputBg}`}/> : lab.phone}</td>
-                          <td className="p-3">{isEditing ? <input type="text" value={editLabourData?.paya} onChange={(e)=>setEditLabourData({...editLabourData!, paya: e.target.value})} className={`w-full rounded px-2 py-1.5 outline-none border font-medium ${inputBg}`}/> : (lab.paya || "-")}</td>
+                          <td className="p-3">{isEditing ? <input type="text" value={editLabourData?.paya} onChange={(e)=>setEditLabourData({...editLabourData!, paya: e.target.value})} className={`w-full rounded px-2 py-1.5 outline-none border font-medium ${inputBg}`}/> : (tn(lab.paya) || "-")}</td>
                           <td className="p-3">{isEditing ? <input type="number" value={editLabourData?.payeRate} onChange={(e)=>setEditLabourData({...editLabourData!, payeRate: Number(e.target.value)})} className={`w-full rounded px-2 py-1.5 outline-none border font-bold ${isDark ? 'bg-slate-900 border-emerald-500/50 text-emerald-400' : 'bg-emerald-50 border-emerald-300 text-emerald-700'}`}/> : <span className={`font-bold px-3 py-1 rounded-md ${isDark ? 'text-emerald-400 bg-emerald-500/10' : 'text-emerald-700 bg-emerald-100 border border-emerald-200'}`}>₹{lab.ratePerPaya || 0}</span>}</td>
                           <td className="p-3">
                             <div className="flex items-center justify-center gap-2">
@@ -979,16 +1095,14 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* ===================== WORK ENTRY TAB & FULLSCREEN SELECTION ===================== */}
+        {/* ===================== WORK ENTRY TAB ===================== */}
         {activeTab === "eent" && (
           <div className="space-y-6 animate-in fade-in duration-300">
             <div className={`border rounded-2xl p-6 shadow-xl flex flex-col md:flex-row gap-6 transition-all ${cardBg}`}>
-              
               <div className="w-full md:w-1/3 flex flex-col gap-4">
                 <h2 className="text-xl font-extrabold mb-2 text-emerald-500 flex items-center gap-2"><CheckSquare size={22} /> Bulk Attendance/Work</h2>
                 <div><label className={`block text-xs font-bold mb-1 ${textMuted}`}>Date</label><input type="date" value={entryDate} onChange={(e) => setEntryDate(e.target.value)} className={`w-full rounded-lg px-3 py-2.5 outline-none font-medium transition-all border ${inputBg}`} required /></div>
                 <div><label className="block text-xs font-extrabold text-emerald-500 mb-1">Paye Count</label><input type="number" value={payeAmount} onChange={(e) => setPayeAmount(e.target.value)} className={`w-full rounded-lg px-3 py-2.5 outline-none font-extrabold text-lg transition-all border ${isDark ? 'bg-slate-900/80 border-emerald-500/50 focus:border-emerald-400 text-emerald-100' : 'bg-emerald-50 border-emerald-300 focus:border-emerald-500 text-emerald-800'}`} placeholder="e.g. 5" /></div>
-                
                 <div className="mt-auto flex flex-col gap-3">
                   <button onClick={handleAddWork} className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2">
                     <CheckCircle size={18}/> Submit Work
@@ -1025,18 +1139,13 @@ export default function AdminDashboard() {
                     <label key={lab.id} className={`flex items-center justify-between p-4 cursor-pointer border-b last:border-0 transition-colors ${isDark ? (selectedLabourIds.includes(lab.id) ? 'bg-emerald-900/20 border-slate-700/30' : 'hover:bg-slate-800/50 border-slate-700/30') : (selectedLabourIds.includes(lab.id) ? 'bg-emerald-50 border-slate-200' : 'hover:bg-white border-slate-200')}`}>
                       <div className="flex items-center gap-3">
                         <input type="checkbox" className="w-5 h-5 accent-emerald-500 rounded cursor-pointer" checked={selectedLabourIds.includes(lab.id)} onChange={(e) => { e.target.checked ? setSelectedLabourIds([...selectedLabourIds, lab.id]) : setSelectedLabourIds(selectedLabourIds.filter(id => id !== lab.id)); }} />
-                        <div><span className={`text-sm md:text-base font-bold block ${selectedLabourIds.includes(lab.id) ? (isDark ? 'text-emerald-300' : 'text-emerald-700') : textMain}`}>{lab.name} <span className={`text-[10px] ml-1 font-medium ${textMuted}`}>ID:{lab.loginId}</span></span></div>
+                        <div><span className={`text-sm md:text-base font-bold block ${selectedLabourIds.includes(lab.id) ? (isDark ? 'text-emerald-300' : 'text-emerald-700') : textMain}`}>{tn(lab.name)} <span className={`text-[10px] ml-1 font-medium ${textMuted}`}>ID:{lab.loginId}</span></span></div>
                       </div>
                       <span className={`text-xs font-bold px-2 py-1 rounded-md border ${isDark ? 'bg-slate-800 text-slate-300 border-slate-700' : 'bg-white text-slate-600 border-slate-200 shadow-sm'}`}>Rate: ₹{lab.ratePerPaya}</span>
                     </label>
                   ))}
                 </div>
-
-                {fullScreenList === "work" && (
-                  <button onClick={() => setFullScreenList(null)} className="w-full mt-4 py-4 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-lg shadow-lg active:scale-95 transition-transform">
-                    Done Selecting
-                  </button>
-                )}
+                {fullScreenList === "work" && (<button onClick={() => setFullScreenList(null)} className="w-full mt-4 py-4 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-lg shadow-lg active:scale-95 transition-transform">Done Selecting</button>)}
               </div>
             </div>
           </div>
@@ -1078,27 +1187,54 @@ export default function AdminDashboard() {
                     <label key={lab.id} className={`flex items-center justify-between p-4 cursor-pointer border-b last:border-0 transition-colors ${isDark ? (selectedKharchaIds.includes(lab.id) ? 'bg-orange-900/20 border-slate-700/30' : 'hover:bg-slate-800/50 border-slate-700/30') : (selectedKharchaIds.includes(lab.id) ? 'bg-orange-50 border-slate-200' : 'hover:bg-white border-slate-200')}`}>
                       <div className="flex items-center gap-3">
                         <input type="checkbox" className="w-5 h-5 accent-orange-500 rounded cursor-pointer" checked={selectedKharchaIds.includes(lab.id)} onChange={(e) => { e.target.checked ? setSelectedKharchaIds([...selectedKharchaIds, lab.id]) : setSelectedKharchaIds(selectedKharchaIds.filter(id => id !== lab.id)); }} />
-                        <div><span className={`text-sm md:text-base font-bold block ${selectedKharchaIds.includes(lab.id) ? (isDark ? 'text-orange-300' : 'text-orange-700') : textMain}`}>{lab.name}</span></div>
+                        <div><span className={`text-sm md:text-base font-bold block ${selectedKharchaIds.includes(lab.id) ? (isDark ? 'text-orange-300' : 'text-orange-700') : textMain}`}>{tn(lab.name)}</span></div>
                       </div>
                     </label>
                   ))}
                 </div>
-
-                {fullScreenList === "kharcha" && (
-                  <button onClick={() => setFullScreenList(null)} className="w-full mt-4 py-4 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-lg shadow-lg active:scale-95 transition-transform">Done Selecting</button>
-                )}
+                {fullScreenList === "kharcha" && (<button onClick={() => setFullScreenList(null)} className="w-full mt-4 py-4 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-lg shadow-lg active:scale-95 transition-transform">Done Selecting</button>)}
               </div>
             </div>
             
             <div className={`border rounded-2xl p-6 shadow-xl transition-all ${cardBg}`}>
               <h2 className="text-xl font-extrabold mb-4 text-orange-500 flex items-center gap-2"><Wallet size={24} /> Single Expense (Kisi ek ko paise dena)</h2>
               <form onSubmit={handleAddKharcha} className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-                <div><label className={`block text-xs font-bold mb-1 ${textMuted}`}>Select Labour</label>
-                  <select value={kharchaLabourId} onChange={(e) => setKharchaLabourId(e.target.value)} className={`w-full rounded-lg px-3 py-2 outline-none font-medium transition-all border ${inputBg}`} required>
-                    <option value="">-- Select Labour --</option>
-                    {currentLabourers.map(lab => (<option key={lab.id} value={lab.id} className={isDark ? "bg-slate-800" : "bg-white"}>{lab.name} ({lab.loginId})</option>))}
-                  </select>
+                
+                {/* 🟢 NAYA: Searchable Smart Dropdown For Single Kharcha */}
+                <div className="relative">
+                  <label className={`block text-xs font-bold mb-1 ${textMuted}`}>Search & Select Labour</label>
+                  <input
+                    type="text"
+                    placeholder="Search name..."
+                    className={`w-full rounded-lg px-3 py-2 outline-none font-medium transition-all border ${inputBg}`}
+                    value={kharchaSearchQuery}
+                    onChange={(e) => {
+                      setKharchaSearchQuery(e.target.value);
+                      setKharchaLabourId(""); 
+                    }}
+                    required
+                  />
+                  {kharchaSearchQuery && !kharchaLabourId && (
+                    <ul className={`absolute z-50 w-full max-h-48 overflow-y-auto mt-1 rounded-md border shadow-2xl ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
+                      {currentLabourers.filter(l => l.name.toLowerCase().includes(kharchaSearchQuery.toLowerCase())).map(l => (
+                        <li 
+                          key={l.id} 
+                          className={`p-3 text-sm font-bold cursor-pointer border-b last:border-0 ${isDark ? 'hover:bg-slate-700 border-slate-700/50 text-white' : 'hover:bg-slate-50 border-slate-100 text-slate-800'}`}
+                          onClick={() => {
+                            setKharchaLabourId(l.id);
+                            setKharchaSearchQuery(tn(l.name));
+                          }}
+                        >
+                          {tn(l.name)} <span className={`text-[10px] ml-1 ${textMuted}`}>{l.loginId}</span>
+                        </li>
+                      ))}
+                      {currentLabourers.filter(l => l.name.toLowerCase().includes(kharchaSearchQuery.toLowerCase())).length === 0 && (
+                        <li className={`p-3 text-xs italic ${textMuted}`}>No labour found</li>
+                      )}
+                    </ul>
+                  )}
                 </div>
+
                 <div><label className="block text-xs font-extrabold text-orange-500 mb-1">Amount (₹)</label><input type="number" value={kharchaAmount} onChange={(e) => setKharchaAmount(e.target.value)} className={`w-full rounded-lg px-3 py-2 outline-none font-bold transition-all border ${isDark ? 'bg-slate-900/50 border-orange-500/50 focus:border-orange-400 text-orange-100' : 'bg-orange-50 border-orange-300 focus:border-orange-500 text-orange-800'}`} placeholder="e.g. 500" required /></div>
                 <button type="submit" className="w-full py-2.5 bg-orange-600 hover:bg-orange-500 text-white rounded-lg font-bold transition shadow-md active:scale-95">Add Single Expense</button>
               </form>
@@ -1109,26 +1245,27 @@ export default function AdminDashboard() {
         {/* ===================== ADVANCE (PESHGI) TAB ===================== */}
         {activeTab === "peshgi" && (
           <div className="space-y-6 animate-in fade-in duration-300">
+            
+            {/* 🟢 NAYA: PESHGI FULLSCREEN SELECTOR LAYOUT */}
             <div className={`border rounded-2xl p-6 shadow-xl flex flex-col md:flex-row gap-6 transition-all ${cardBg}`}>
               
               <div className="w-full md:w-1/3 flex flex-col gap-4">
                 <h2 className="text-xl font-extrabold mb-2 text-rose-500 flex items-center gap-2"><IndianRupee size={22} /> Manage Peshgi</h2>
-                
                 <form onSubmit={handleAddPeshgi} className="flex flex-col gap-4">
                   <div>
                     <label className={`block text-xs font-bold mb-1 ${textMuted}`}>Date</label>
                     <input type="date" value={peshgiDate} onChange={(e) => setPeshgiDate(e.target.value)} className={`w-full rounded-lg px-3 py-2.5 outline-none font-medium transition-all border ${inputBg}`} required />
                   </div>
                   
-                  <div>
-                    <label className={`block text-xs font-bold mb-1 ${textMuted}`}>Select Labour</label>
-                    <select value={peshgiLabourId} onChange={(e) => setPeshgiLabourId(e.target.value)} className={`w-full rounded-lg px-3 py-2.5 outline-none font-medium transition-all border ${inputBg}`} required>
-                      <option value="">-- Select Labour --</option>
-                      {currentLabourers.map(lab => (<option key={lab.id} value={lab.id} className={isDark ? "bg-slate-800" : "bg-white"}>{lab.name} ({lab.loginId})</option>))}
-                    </select>
+                  {/* Selected Status UI */}
+                  <div className={`p-3 rounded-lg border ${peshgiLabourId ? (isDark ? 'bg-emerald-900/20 border-emerald-500/30' : 'bg-emerald-50 border-emerald-200') : (isDark ? 'bg-slate-900/50 border-slate-700' : 'bg-slate-50 border-slate-200')}`}>
+                    <label className={`block text-xs font-bold mb-1 ${textMuted}`}>Selected Labourer</label>
+                    <p className={`font-extrabold ${peshgiLabourId ? (isDark ? 'text-emerald-400' : 'text-emerald-700') : textMuted}`}>
+                      {peshgiLabourId ? tn(currentLabourers.find(l => l.id === peshgiLabourId)?.name || "") : "Please select from the list ➔"}
+                    </p>
                   </div>
 
-                  <div className={`flex p-1 rounded-lg border shadow-inner ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-slate-100 border-slate-200'}`}>
+                  <div className={`flex p-1 rounded-lg border shadow-inner mt-2 ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-slate-100 border-slate-200'}`}>
                     <button type="button" onClick={() => setPeshgiType("add")} className={`flex-1 flex items-center justify-center gap-1 py-2 rounded-md text-xs font-bold transition-all ${peshgiType === "add" ? "bg-rose-600 text-white shadow-md" : (isDark ? "text-slate-400 hover:text-white" : "text-slate-600 hover:text-slate-900")}`}>
                       <TrendingUp size={14}/> Add Advance
                     </button>
@@ -1142,85 +1279,119 @@ export default function AdminDashboard() {
                     <input type="number" value={peshgiAmount} onChange={(e) => setPeshgiAmount(e.target.value)} className={`w-full rounded-lg px-3 py-2.5 outline-none text-lg font-bold transition-all border ${peshgiType === 'add' ? (isDark ? 'bg-slate-900/80 border-rose-500/50 focus:border-rose-400 text-rose-100' : 'bg-rose-50 border-rose-300 focus:border-rose-500 text-rose-800') : (isDark ? 'bg-slate-900/80 border-emerald-500/50 focus:border-emerald-400 text-emerald-100' : 'bg-emerald-50 border-emerald-300 focus:border-emerald-500 text-emerald-800')}`} placeholder="e.g. 5000" required />
                   </div>
 
-                  <button type="submit" className={`w-full py-3.5 text-white rounded-xl font-bold transition-all shadow-lg active:scale-95 ${peshgiType === 'add' ? 'bg-rose-600 hover:bg-rose-500 shadow-rose-500/20' : 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-500/20'}`}>
+                  <button type="submit" className={`w-full py-3.5 text-white rounded-xl font-bold transition-all shadow-lg active:scale-95 mt-2 ${peshgiType === 'add' ? 'bg-rose-600 hover:bg-rose-500 shadow-rose-500/20' : 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-500/20'}`}>
                     Submit Transaction
                   </button>
                 </form>
               </div>
 
-              <div className={`w-full md:w-2/3 border-t md:border-t-0 md:border-l pt-4 md:pt-0 md:pl-6 ${isDark ? 'border-slate-700/50' : 'border-slate-200'}`}>
-                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-3 gap-2">
-                  <label className={`text-xs font-bold uppercase tracking-wider ${textMain}`}>Advance Details & History</label>
-                  <div className="relative">
-                    <Search size={14} className="absolute left-2.5 top-1/2 transform -translate-y-1/2 text-slate-400" />
-                    <input type="text" placeholder="Search..." value={searchPeshgi} onChange={(e) => setSearchPeshgi(e.target.value)} className={`pl-8 pr-3 py-1.5 rounded-md text-xs outline-none w-full sm:w-48 transition-all border ${inputBg}`} />
+              {/* Peshgi Selection List (Fullscreen Support) */}
+              <div className={fullScreenList === "peshgi" ? `fixed inset-0 z-[120] p-4 md:p-8 flex flex-col animate-in zoom-in-95 duration-200 ${isDark ? 'bg-[#0f172a]' : 'bg-slate-50'}` : `w-full md:w-2/3 border-t md:border-t-0 md:border-l pt-4 md:pt-0 md:pl-6 flex flex-col ${isDark ? 'border-slate-700/50' : 'border-slate-200'}`}>
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-3 gap-3">
+                  <label className={`text-xs md:text-sm font-extrabold uppercase tracking-wider flex items-center gap-2 ${textMain}`}>
+                    Select Target Labourer
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <div className="relative flex-1">
+                      <Search size={14} className="absolute left-2.5 top-1/2 transform -translate-y-1/2 text-slate-400" />
+                      <input type="text" placeholder="Search..." value={searchPeshgi} onChange={(e) => setSearchPeshgi(e.target.value)} className={`pl-8 pr-3 py-2 rounded-lg text-sm outline-none w-full sm:w-48 transition-all border ${inputBg}`} />
+                    </div>
+                    <button onClick={() => setFullScreenList(fullScreenList === "peshgi" ? null : "peshgi")} className={`p-2 rounded-lg border transition-colors ${isDark ? 'bg-slate-800 hover:bg-slate-700 border-slate-600 text-slate-300' : 'bg-white hover:bg-slate-50 border-slate-300 text-slate-600 shadow-sm'}`}>
+                      {fullScreenList === "peshgi" ? <Minimize2 size={18}/> : <Maximize2 size={18}/>}
+                    </button>
                   </div>
                 </div>
 
-                <div className={`border rounded-xl max-h-100 overflow-y-auto custom-scrollbar shadow-inner ${isDark ? 'bg-slate-900/60 border-slate-700/60' : 'bg-slate-50 border-slate-200'}`}>
-                  <table className="w-full text-left border-collapse">
-                    <thead className={`text-[10px] uppercase tracking-wider sticky top-0 z-10 border-b ${tableHeader}`}>
-                      <tr><th className="p-3 font-bold">Labour Name</th><th className="p-3 font-bold">Location</th><th className="p-3 font-bold text-right text-rose-500">Total Advance</th></tr>
-                    </thead>
-                    <tbody className={`text-sm ${tableBody}`}>
-                      {filteredPeshgi.length === 0 && <tr><td colSpan={3} className={`p-4 text-center font-medium ${textMuted}`}>No records found.</td></tr>}
-                      {filteredPeshgi.map(lab => {
-                        const totalPeshgi = getStats(lab).peshgi;
-                        const isExpanded = expandedPeshgiLabourId === lab.id;
-                        
-                        const peshgiHistory = (lab.entries || [])
-                          .filter((e:any) => e.peshgi && e.peshgi !== 0)
-                          .sort((a:any, b:any) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
-                        return (
-                          <React.Fragment key={lab.id}>
-                            <tr 
-                              onClick={() => setExpandedPeshgiLabourId(isExpanded ? null : lab.id)}
-                              className={`transition-colors cursor-pointer ${tableRowHover} ${isExpanded ? (isDark ? 'bg-slate-800/40' : 'bg-slate-100') : ''}`}
-                            >
-                              <td className="p-3 font-bold flex items-center gap-2">
-                                <span className={textMuted}>{isExpanded ? <ChevronDown size={16}/> : <ChevronRight size={16}/>}</span>
-                                {lab.name} <span className={`text-[10px] ml-1 px-1.5 py-0.5 rounded font-medium ${isDark ? 'text-blue-300 bg-blue-900/30' : 'text-blue-700 bg-blue-100 border border-blue-200'}`}>ID: {lab.loginId}</span>
-                              </td>
-                              <td className={`p-3 text-xs font-medium ${textMuted}`}>{lab.paya || "-"}</td>
-                              <td className={`p-3 text-right font-extrabold ${totalPeshgi > 0 ? (isDark ? 'text-rose-400' : 'text-rose-600') : textMuted}`}>₹{totalPeshgi.toLocaleString()}</td>
-                            </tr>
-                            
-                            {isExpanded && (
-                              <tr className={isDark ? "bg-slate-950/80" : "bg-white"}>
-                                <td colSpan={3} className="p-4 border-l-4 border-rose-500">
-                                  <h4 className={`text-xs font-extrabold uppercase mb-3 flex items-center gap-2 ${textMuted}`}><History size={14}/> Transaction History</h4>
-                                  {peshgiHistory.length === 0 ? (
-                                    <p className={`text-xs italic font-medium ${textMuted}`}>Koi advance history nahi hai.</p>
-                                  ) : (
-                                    <div className="space-y-2">
-                                      {peshgiHistory.map((entry:any) => (
-                                        <div key={entry.id} className={`flex justify-between items-center px-3 py-2 rounded-lg border ${isDark ? 'bg-slate-900 border-slate-700/50' : 'bg-slate-50 border-slate-200 shadow-sm'}`}>
-                                          <span className={`text-xs font-bold ${textMain}`}>{entry.date}</span>
-                                          {entry.peshgi! > 0 ? (
-                                            <span className={`text-xs font-bold px-2 py-1 rounded border ${isDark ? 'text-rose-400 bg-rose-500/10 border-rose-500/20' : 'text-rose-700 bg-rose-100 border-rose-200'}`}>Diya (Given): ₹{entry.peshgi}</span>
-                                          ) : (
-                                            <span className={`text-xs font-bold px-2 py-1 rounded border ${isDark ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' : 'text-emerald-700 bg-emerald-100 border-emerald-200'}`}>Jama (Returned): ₹{Math.abs(entry.peshgi!)}</span>
-                                          )}
-                                        </div>
-                                      ))}
-                                    </div>
-                                  )}
-                                </td>
-                              </tr>
-                            )}
-                          </React.Fragment>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                <div className={`border rounded-xl overflow-y-auto custom-scrollbar shadow-inner flex-1 ${fullScreenList === "peshgi" ? "" : "max-h-75"} ${isDark ? 'bg-slate-900/60 border-slate-700/60' : 'bg-slate-50 border-slate-200'}`}>
+                  {filteredPeshgi.length === 0 && <p className={`text-sm p-4 text-center font-medium ${textMuted}`}>No labourers found.</p>}
+                  {filteredPeshgi.map(lab => (
+                    <label key={lab.id} className={`flex items-center justify-between p-4 cursor-pointer border-b last:border-0 transition-colors ${peshgiLabourId === lab.id ? (isDark ? 'bg-emerald-900/20 border-slate-700/30' : 'bg-emerald-50 border-slate-200') : (isDark ? 'hover:bg-slate-800/50 border-slate-700/30' : 'hover:bg-white border-slate-200')}`}>
+                      <div className="flex items-center gap-3">
+                        <input type="radio" name="peshgiSelector" className="w-5 h-5 accent-emerald-500 rounded-full cursor-pointer" checked={peshgiLabourId === lab.id} onChange={() => setPeshgiLabourId(lab.id)} />
+                        <div><span className={`text-sm md:text-base font-bold block ${peshgiLabourId === lab.id ? (isDark ? 'text-emerald-400' : 'text-emerald-700') : textMain}`}>{tn(lab.name)} <span className={`text-[10px] ml-1 font-medium ${textMuted}`}>ID:{lab.loginId}</span></span></div>
+                      </div>
+                    </label>
+                  ))}
                 </div>
+                {fullScreenList === "peshgi" && (<button onClick={() => setFullScreenList(null)} className="w-full mt-4 py-4 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-lg shadow-lg active:scale-95 transition-transform">Done Selecting</button>)}
+              </div>
+            </div>
+
+            {/* Peshgi History Table */}
+            <div className={`border rounded-2xl p-6 shadow-xl transition-all ${cardBg}`}>
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-4 gap-2">
+                <label className={`text-sm font-extrabold uppercase tracking-wider ${textMain}`}>Transaction History</label>
+              </div>
+
+              <div className={`border rounded-xl max-h-100 overflow-y-auto custom-scrollbar shadow-inner ${isDark ? 'bg-slate-900/60 border-slate-700/60' : 'bg-slate-50 border-slate-200'}`}>
+                <table className="w-full text-left border-collapse">
+                  <thead className={`text-[10px] uppercase tracking-wider sticky top-0 z-10 border-b ${tableHeader}`}>
+                    <tr><th className="p-3 font-bold">Labour Name</th><th className="p-3 font-bold">Location</th><th className="p-3 font-bold text-right text-rose-500">Total Advance</th></tr>
+                  </thead>
+                  <tbody className={`text-sm ${tableBody}`}>
+                    {filteredPeshgi.length === 0 && <tr><td colSpan={3} className={`p-4 text-center font-medium ${textMuted}`}>No records found.</td></tr>}
+                    {filteredPeshgi.map(lab => {
+                      const totalPeshgi = getStats(lab).peshgi;
+                      const isExpanded = expandedPeshgiLabourId === lab.id;
+                      const peshgiHistory = (lab.entries || []).filter((e:any) => e.peshgi && e.peshgi !== 0).sort((a:any, b:any) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+                      return (
+                        <React.Fragment key={lab.id}>
+                          <tr onClick={() => setExpandedPeshgiLabourId(isExpanded ? null : lab.id)} className={`transition-colors cursor-pointer ${tableRowHover} ${isExpanded ? (isDark ? 'bg-slate-800/40' : 'bg-slate-100') : ''}`}>
+                            <td className="p-3 font-bold flex items-center gap-2"><span className={textMuted}>{isExpanded ? <ChevronDown size={16}/> : <ChevronRight size={16}/>}</span> {tn(lab.name)}</td>
+                            <td className={`p-3 text-xs font-medium ${textMuted}`}>{tn(lab.paya) || "-"}</td>
+                            <td className={`p-3 text-right font-extrabold ${totalPeshgi > 0 ? (isDark ? 'text-rose-400' : 'text-rose-600') : textMuted}`}>₹{totalPeshgi.toLocaleString()}</td>
+                          </tr>
+                          
+                          {isExpanded && (
+                            <tr className={isDark ? "bg-slate-950/80" : "bg-white"}>
+                              <td colSpan={3} className="p-4 border-l-4 border-rose-500">
+                                <h4 className={`text-xs font-extrabold uppercase mb-3 flex items-center gap-2 ${textMuted}`}><History size={14}/> Transaction History</h4>
+                                {peshgiHistory.length === 0 ? (<p className={`text-xs italic font-medium ${textMuted}`}>Koi advance history nahi hai.</p>) : (
+                                  <div className="space-y-2">
+                                    {peshgiHistory.map((entry:any) => (
+                                      <div key={entry.id} className={`flex justify-between items-center px-3 py-2 rounded-lg border ${isDark ? 'bg-slate-900 border-slate-700/50' : 'bg-slate-50 border-slate-200 shadow-sm'}`}>
+                                        <span className={`text-xs font-bold ${textMain}`}>{entry.date}</span>
+                                        {entry.peshgi! > 0 ? (
+                                          <span className={`text-xs font-bold px-2 py-1 rounded border ${isDark ? 'text-rose-400 bg-rose-500/10 border-rose-500/20' : 'text-rose-700 bg-rose-100 border-rose-200'}`}>Diya (Given): ₹{entry.peshgi}</span>
+                                        ) : (
+                                          <span className={`text-xs font-bold px-2 py-1 rounded border ${isDark ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' : 'text-emerald-700 bg-emerald-100 border-emerald-200'}`}>Jama (Returned): ₹{Math.abs(entry.peshgi!)}</span>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>
         )}
 
-        {/* ===================== 🟢 NAYA: RECYCLE BIN TAB ===================== */}
+        {/* ===================== DOWNLOAD RECEIPT TAB ===================== */}
+        {activeTab === "download" && (
+          <div className="space-y-6 animate-in fade-in duration-300">
+            <div className={`border rounded-2xl p-8 shadow-xl text-center transition-all ${isDark ? 'bg-gradient-to-br from-cyan-900/30 to-slate-800/80 border-cyan-500/30' : 'bg-gradient-to-br from-cyan-50 to-white border-cyan-200'}`}>
+              <h2 className={`text-2xl font-extrabold mb-3 flex justify-center items-center gap-2 ${isDark ? 'text-cyan-400' : 'text-cyan-600'}`}>
+                <FileSpreadsheet size={28} /> Download Master Summary
+              </h2>
+              <p className={`text-sm mb-6 max-w-lg mx-auto font-medium ${textMuted}`}>
+                Is button se aapke poore bhatte ({activeBhattaName}) ke sabhi labourers ka Total Hisaab ek hi PDF list mein aa jayega. Master checking ke liye best hai.
+              </p>
+              <button onClick={downloadAllSummaryPDF} className="bg-cyan-600 hover:bg-cyan-500 text-white px-8 py-3.5 rounded-xl text-sm font-bold flex items-center gap-2 mx-auto transition-all shadow-[0_0_15px_rgba(6,182,212,0.4)] active:scale-95">
+                <Download size={20}/> Download Summary PDF
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ===================== RECYCLE BIN TAB ===================== */}
         {activeTab === "recycle" && (
           <div className="space-y-6 animate-in fade-in duration-300 max-w-4xl mx-auto">
             <div className={`border rounded-2xl p-6 md:p-8 shadow-xl transition-all ${cardBg}`}>
@@ -1228,11 +1399,8 @@ export default function AdminDashboard() {
                 <h2 className="text-2xl font-extrabold mb-2 flex items-center gap-3 text-slate-500">
                   <Trash size={28} /> {t("Recycle Bin (Deleted Accounts)", "रीसायकल बिन (हटाए गए अकाउंट)")}
                 </h2>
-                <p className={`text-sm font-medium ${textMuted}`}>
-                  Yahan wo accounts hain jinhe delete kiya gaya tha. Aap inhe wapas Restore kar sakte hain ya hamesha ke liye Delete kar sakte hain.
-                </p>
+                <p className={`text-sm font-medium ${textMuted}`}>Yahan wo accounts hain jinhe delete kiya gaya tha. Aap inhe wapas Restore kar sakte hain ya hamesha ke liye Delete kar sakte hain.</p>
               </div>
-
               {deletedLabourers.length === 0 ? (
                  <div className={`p-10 text-center rounded-xl border border-dashed ${isDark ? 'border-slate-700/50 bg-slate-900/50' : 'border-slate-300 bg-slate-50'}`}>
                     <RefreshCcw size={40} className={`mx-auto mb-4 ${textMuted} opacity-50`} />
@@ -1241,26 +1409,14 @@ export default function AdminDashboard() {
               ) : (
                 <div className={`rounded-xl border overflow-hidden shadow-inner ${isDark ? 'border-slate-700/60 bg-slate-900/40' : 'border-slate-200 bg-white'}`}>
                   <table className="w-full text-left">
-                    <thead className={tableHeader}>
-                      <tr>
-                        <th className="p-4 font-bold">Deleted Labour</th>
-                        <th className="p-4 font-bold text-center">Action</th>
-                      </tr>
-                    </thead>
+                    <thead className={tableHeader}><tr><th className="p-4 font-bold">Deleted Labour</th><th className="p-4 font-bold text-center">Action</th></tr></thead>
                     <tbody className={`text-sm ${tableBody}`}>
                       {deletedLabourers.map(lab => (
                         <tr key={lab.id} className={`transition-colors ${tableRowHover}`}>
-                          <td className="p-4">
-                            <span className={`font-bold text-base block ${textMain}`}>{lab.name}</span>
-                            <span className={`text-xs ${textMuted}`}>ID: {lab.loginId} | Location: {lab.paya}</span>
-                          </td>
+                          <td className="p-4"><span className={`font-bold text-base block ${textMain}`}>{tn(lab.name)}</span><span className={`text-xs ${textMuted}`}>ID: {lab.loginId}</span></td>
                           <td className="p-4 flex items-center justify-center gap-2">
-                             <button onClick={() => setShowPinModal({action: "restore", targetId: lab.id})} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg transition-all active:scale-95 flex items-center gap-1">
-                               <RefreshCcw size={16}/> Restore
-                             </button>
-                             <button onClick={() => setShowPinModal({action: "hard_delete", targetId: lab.id})} className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-lg transition-all active:scale-95 flex items-center gap-1">
-                               <Trash2 size={16}/> Forever
-                             </button>
+                             <button onClick={() => setShowPinModal({action: "restore", targetId: lab.id})} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg transition-all active:scale-95 flex items-center gap-1"><RefreshCcw size={16}/> Restore</button>
+                             <button onClick={() => setShowPinModal({action: "hard_delete", targetId: lab.id})} className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-lg transition-all active:scale-95 flex items-center gap-1"><Trash2 size={16}/> Forever</button>
                           </td>
                         </tr>
                       ))}
@@ -1272,84 +1428,35 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* ===================== GIVE POWER (ROLE MANAGEMENT) TAB ===================== */}
+        {/* ===================== ROLE MANAGEMENT TAB ===================== */}
         {activeTab === "role" && (
           <div className="space-y-6 animate-in fade-in duration-300 max-w-4xl mx-auto">
             <div className={`border rounded-2xl p-6 md:p-8 shadow-xl transition-all ${cardBg}`}>
-              
               <div className="mb-8 border-b pb-6 border-slate-700/50">
-                <h2 className="text-2xl font-extrabold mb-2 flex items-center gap-3 text-violet-500">
-                  <ShieldAlert size={28} /> Give Admin Power
-                </h2>
-                <p className={`text-sm font-medium ${textMuted}`}>
-                  Neeche diye gaye Mobile Numbers ya Email IDs se koi bhi login karega toh direct Admin Dashboard open hoga. Sirf unhi logon ko add karein jinpar aapko bharosa ho.
-                </p>
+                <h2 className="text-2xl font-extrabold mb-2 flex items-center gap-3 text-violet-500"><ShieldAlert size={28} /> Give Admin Power</h2>
+                <p className={`text-sm font-medium ${textMuted}`}>Neeche diye gaye Mobile Numbers ya Email IDs se koi bhi login karega toh direct Admin Dashboard open hoga. Sirf unhi logon ko add karein jinpar aapko bharosa ho.</p>
               </div>
-
               <form onSubmit={handleAddAdmin} className="flex flex-col md:flex-row gap-4 items-end mb-10">
-                <div className="flex-1 w-full">
-                  <label className={`block text-xs font-bold mb-1.5 ${textMain}`}>Phone Number or Email ID</label>
-                  <input 
-                    type="text" 
-                    value={newAdminId} 
-                    onChange={(e) => setNewAdminId(e.target.value)} 
-                    className={`w-full rounded-xl px-4 py-3.5 outline-none font-bold transition-all border ${inputBg}`} 
-                    placeholder="e.g. 9876543210 or admin@bhatta.com" 
-                    required 
-                  />
-                </div>
-                <button type="submit" className="w-full md:w-auto py-3.5 px-8 bg-violet-600 hover:bg-violet-500 text-white rounded-xl font-bold shadow-lg shadow-violet-500/30 flex justify-center items-center gap-2 active:scale-95 transition-all">
-                  <Plus size={18}/> Make Admin
-                </button>
+                <div className="flex-1 w-full"><label className={`block text-xs font-bold mb-1.5 ${textMain}`}>Phone Number or Email ID</label><input type="text" value={newAdminId} onChange={(e) => setNewAdminId(e.target.value)} className={`w-full rounded-xl px-4 py-3.5 outline-none font-bold transition-all border ${inputBg}`} placeholder="e.g. 9876543210 or admin@bhatta.com" required /></div>
+                <button type="submit" className="w-full md:w-auto py-3.5 px-8 bg-violet-600 hover:bg-violet-500 text-white rounded-xl font-bold shadow-lg shadow-violet-500/30 flex justify-center items-center gap-2 active:scale-95 transition-all"><Plus size={18}/> Make Admin</button>
               </form>
-
-              <div className="mb-3 flex items-center justify-between">
-                <h3 className={`text-sm font-extrabold uppercase tracking-wider ${textMuted}`}>Current Master Admins</h3>
-                <span className={`text-xs font-bold px-2.5 py-1 rounded-md ${isDark ? 'bg-slate-800 text-slate-300' : 'bg-slate-200 text-slate-700'}`}>{adminList.length} Active</span>
-              </div>
-
+              <div className="mb-3 flex items-center justify-between"><h3 className={`text-sm font-extrabold uppercase tracking-wider ${textMuted}`}>Current Master Admins</h3><span className={`text-xs font-bold px-2.5 py-1 rounded-md ${isDark ? 'bg-slate-800 text-slate-300' : 'bg-slate-200 text-slate-700'}`}>{adminList.length} Active</span></div>
               <div className={`rounded-xl border overflow-hidden shadow-inner ${isDark ? 'border-slate-700/60 bg-slate-900/40' : 'border-slate-200 bg-white'}`}>
                 <table className="w-full text-left">
-                  <thead className={tableHeader}>
-                    <tr>
-                      <th className="p-4 font-bold">Admin Identifier (Phone/Email)</th>
-                      <th className="p-4 font-bold text-center w-32">Action</th>
-                    </tr>
-                  </thead>
+                  <thead className={tableHeader}><tr><th className="p-4 font-bold">Admin Identifier (Phone/Email)</th><th className="p-4 font-bold text-center w-32">Action</th></tr></thead>
                   <tbody className={`text-sm ${tableBody}`}>
                     {adminList.map((admin, index) => {
                       const isMaster = admin === "admin" || admin === "nadeemxsalar@gmail.com";
                       return (
                         <tr key={index} className={`transition-colors ${tableRowHover}`}>
-                          <td className="p-4 flex items-center gap-3">
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${isMaster ? 'bg-violet-500/20 text-violet-500' : (isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500')}`}>
-                              <Users size={14} />
-                            </div>
-                            <div>
-                              <span className={`font-bold text-base block ${textMain}`}>{admin}</span>
-                              {isMaster && <span className="text-[10px] font-bold text-violet-500 uppercase tracking-widest">Master Owner</span>}
-                            </div>
-                          </td>
-                          <td className="p-4 text-center">
-                            {isMaster ? (
-                              <span className={`text-xs font-bold px-3 py-1.5 rounded-lg border ${isDark ? 'bg-slate-800 border-slate-700 text-slate-500' : 'bg-slate-100 border-slate-200 text-slate-400'}`}>Fixed</span>
-                            ) : (
-                              <button 
-                                onClick={() => handleRemoveAdmin(admin)} 
-                                className={`p-2.5 rounded-lg transition-all border active:scale-95 ${isDark ? 'bg-slate-800 hover:bg-rose-500/20 border-slate-700 hover:border-rose-500/50 text-rose-400' : 'bg-white hover:bg-rose-50 border-slate-200 hover:border-rose-300 text-rose-500 shadow-sm'}`}
-                                title="Remove Power"
-                              >
-                                <Trash2 size={18}/>
-                              </button>
-                            )}
-                          </td>
+                          <td className="p-4 flex items-center gap-3"><div className={`w-8 h-8 rounded-full flex items-center justify-center ${isMaster ? 'bg-violet-500/20 text-violet-500' : (isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500')}`}><Users size={14} /></div><div><span className={`font-bold text-base block ${textMain}`}>{admin}</span>{isMaster && <span className="text-[10px] font-bold text-violet-500 uppercase tracking-widest">Master Owner</span>}</div></td>
+                          <td className="p-4 text-center">{isMaster ? (<span className={`text-xs font-bold px-3 py-1.5 rounded-lg border ${isDark ? 'bg-slate-800 border-slate-700 text-slate-500' : 'bg-slate-100 border-slate-200 text-slate-400'}`}>Fixed</span>) : (<button onClick={() => handleRemoveAdmin(admin)} className={`p-2.5 rounded-lg transition-all border active:scale-95 ${isDark ? 'bg-slate-800 hover:bg-rose-500/20 border-slate-700 hover:border-rose-500/50 text-rose-400' : 'bg-white hover:bg-rose-50 border-slate-200 hover:border-rose-300 text-rose-500 shadow-sm'}`} title="Remove Power"><Trash2 size={18}/></button>)}</td>
                         </tr>
                       );
                     })}
                   </tbody>
                 </table>
               </div>
-
             </div>
           </div>
         )}
