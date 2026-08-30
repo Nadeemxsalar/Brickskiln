@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { saveLabourData, getLabourData, fetchFromFirebase } from "../../lib/storage";
 import { Labour, DailyEntry, Bhatta } from "../../types";
-import { Menu, X, FileText, LayoutDashboard, IndianRupee, Users, Building2, Layers, Wallet, Settings, Check, LogOut, CheckSquare, Search, AlertCircle, CheckCircle, TrendingDown, TrendingUp, ChevronRight, ChevronDown, History, BarChart3, Upload, FileSpreadsheet, Download, FileDown, Maximize2, Minimize2, UserMinus, ShieldAlert, Trash2, Plus, Sun, Moon, Bell, Key, LockKeyhole, Loader2, CloudDownload, RefreshCcw, DatabaseBackup, Globe, Trash, LayoutList, Table, CalendarDays } from "lucide-react";
+import { Menu, X, FileText, LayoutDashboard, IndianRupee, Users, Building2, Layers, Wallet, Settings, Check, LogOut, CheckSquare, Search, AlertCircle, CheckCircle, TrendingDown, TrendingUp, ChevronRight, ChevronDown, History, BarChart3, Upload, FileSpreadsheet, Download, FileDown, Maximize2, Minimize2, UserMinus, ShieldAlert, Trash2, Plus, Sun, Moon, Bell, Key, LockKeyhole, Loader2, CloudDownload, RefreshCcw, DatabaseBackup, Globe, Trash, LayoutList, Table, CalendarDays, MoreVertical } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid } from 'recharts';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -30,6 +30,7 @@ export default function AdminDashboard() {
   const [isAddingBhatta, setIsAddingBhatta] = useState(false);
   
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false); 
   const [activeTab, setActiveTab] = useState<"dashboard" | "eent" | "kharcha" | "peshgi" | "manage" | "download" | "role" | "recycle">("dashboard");
 
   const [dashboardView, setDashboardView] = useState<"card" | "matrix">("card");
@@ -96,6 +97,9 @@ export default function AdminDashboard() {
   const [adminPin, setAdminPin] = useState<string | null>(null);
   const [showPinModal, setShowPinModal] = useState<{action: "delete" | "reset" | "restore" | "hard_delete", targetId: string} | null>(null);
   const [pinInput, setPinInput] = useState("");
+  
+  // 🟢 NAYA: Old & New PIN States
+  const [oldPinSetup, setOldPinSetup] = useState("");
   const [newPinSetup, setNewPinSetup] = useState("");
 
   const t = (en: string, hi: string) => lang === "hi" ? hi : en;
@@ -199,7 +203,7 @@ export default function AdminDashboard() {
                 hasNew = true;
               }
             } catch (e) {
-              // Fail silently: will fallback to English automatically
+              // Fail silently
             }
           }
         }
@@ -241,13 +245,21 @@ export default function AdminDashboard() {
     router.push("/");
   };
 
+  // 🟢 NAYA: Secure PIN Update Logic
   const handleSetPin = (e: React.FormEvent) => {
     e.preventDefault();
-    if(newPinSetup.length !== 4) return showToast("PIN 4 digit ka hona chahiye!", "error");
+    if (adminPin) {
+      if (oldPinSetup !== adminPin) {
+        return showToast(t("Current PIN is incorrect!", "पुराना पिन गलत है!"), "error");
+      }
+    }
+    if (newPinSetup.length !== 4) return showToast("New PIN must be 4 digits!", "error");
+    
     setAdminPin(newPinSetup);
     localStorage.setItem("bhatta_admin_pin", btoa(newPinSetup));
     setNewPinSetup("");
-    showToast("Security PIN set ho gaya!", "success");
+    setOldPinSetup("");
+    showToast(t("Security PIN Updated successfully!", "सिक्योरिटी पिन सेट हो गया!"), "success");
   };
 
   const executeSecureAction = (e: React.FormEvent) => {
@@ -315,7 +327,6 @@ export default function AdminDashboard() {
   const deletedLabourers = labourers.filter(lab => lab.bhattaId === activeBhattaId && lab.isDeleted);
   const activeBhattaName = bhattas.find(b => b.id === activeBhattaId)?.name || "Bhatta";
 
-  // Advanced Monthly Ledger Logic
   const [matrixYear, matrixMonthNum] = matrixMonth.split("-").map(Number);
   const daysInMatrixMonth = new Date(matrixYear, matrixMonthNum, 0).getDate();
   const allMatrixDates = Array.from({ length: daysInMatrixMonth }, (_, i) => {
@@ -635,7 +646,6 @@ export default function AdminDashboard() {
   const filteredPeshgi = currentLabourers.filter(l => l.name.toLowerCase().includes(searchPeshgi.toLowerCase()));
   const filteredDownload = currentLabourers.filter(l => l.name.toLowerCase().includes(searchDownload.toLowerCase()) || (l.loginId && l.loginId.includes(searchDownload)));
 
-  // CSS Theme Classes for Absolute Override
   const isDark = theme === "dark";
   const bgMain = isDark ? "bg-[#0f172a] text-white" : "bg-slate-50 text-slate-900";
   const navBg = isDark ? "bg-[#0f172a]/90 border-slate-700/50" : "bg-white/90 border-slate-200 shadow-sm";
@@ -653,7 +663,6 @@ export default function AdminDashboard() {
 
   // 🟢 NAYA: RESPONSIVE MONTHLY MATRIX TABLE 
   const renderMatrixTable = () => {
-    // Grand Total Calculation for current month
     const grandMonthTotal = filteredDashboard.reduce((acc, lab) => {
       return acc + (lab.entries || []).reduce((sum: number, e: any) => {
         if(e.date.startsWith(matrixMonth)) return sum + (e.payeCount || 0);
@@ -690,7 +699,6 @@ export default function AdminDashboard() {
           <table className="w-full text-left border-collapse min-w-max">
             <thead>
               <tr>
-                {/* 🟢 MOBILE OPTIMIZED LEFT HEADER */}
                 <th className={`sticky top-0 left-0 z-[50] p-2 md:p-4 text-[9px] md:text-xs uppercase tracking-widest font-black border-b-2 border-r-2 whitespace-nowrap ${isDark ? 'bg-slate-900 text-slate-400 border-slate-700' : 'bg-slate-100 text-slate-500 border-slate-200 shadow-[2px_2px_5px_rgba(0,0,0,0.02)]'}`}>
                   <span className="hidden sm:inline">Date ↓ \ Name →</span>
                   <span className="sm:hidden">Date</span>
@@ -702,7 +710,6 @@ export default function AdminDashboard() {
                   </th>
                 ))}
                 
-                {/* 🟢 MOBILE OPTIMIZED RIGHT HEADER */}
                 <th className={`sticky top-0 right-0 z-[50] p-2 md:p-4 text-[9px] md:text-xs uppercase tracking-widest font-black text-center text-emerald-600 border-b-2 border-l-2 whitespace-nowrap ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-emerald-50 border-emerald-200 shadow-[-2px_2px_5px_rgba(0,0,0,0.02)]'}`}>
                   <span className="hidden sm:inline">Daily Total</span>
                   <span className="sm:hidden">Total</span>
@@ -716,13 +723,11 @@ export default function AdminDashboard() {
               )}
               {allMatrixDates.map((date) => {
                 let dayTotalPaye = 0;
-                // Ex: "2026-08-30" -> split returns ["2026", "08", "30"]
                 const dParts = date.split('-'); 
                 const shortDate = `${dParts[2]}/${dParts[1]}`; 
 
                 return (
                   <tr key={date} className={`transition-colors hover:bg-blue-50/50 dark:hover:bg-blue-900/20`}>
-                    {/* 🟢 MOBILE OPTIMIZED DATE CELL */}
                     <td className={`sticky left-0 z-[30] p-2 md:p-4 border-b border-r-2 font-bold whitespace-nowrap text-[10px] md:text-sm ${isDark ? 'bg-slate-900 border-slate-800 text-slate-300 shadow-[2px_0_5px_rgba(0,0,0,0.2)]' : 'bg-slate-50 border-slate-100 text-slate-600 shadow-[2px_0_5px_rgba(0,0,0,0.02)]'}`}>
                       <span className="hidden sm:inline">{date}</span>
                       <span className="sm:hidden">{shortDate}</span>
@@ -747,7 +752,6 @@ export default function AdminDashboard() {
                       )
                     })}
                     
-                    {/* 🟢 MOBILE OPTIMIZED TOTAL CELL */}
                     <td className={`sticky right-0 z-[30] p-2 md:p-4 border-b border-l-2 text-center font-black text-sm md:text-lg text-emerald-600 ${isDark ? 'bg-slate-900 border-slate-800 shadow-[-2px_0_5px_rgba(0,0,0,0.2)]' : 'bg-emerald-50/30 border-slate-100 shadow-[-2px_0_5px_rgba(0,0,0,0.02)]'}`}>
                       {dayTotalPaye > 0 ? dayTotalPaye : <span className="opacity-30 font-normal">-</span>}
                     </td>
@@ -783,15 +787,25 @@ export default function AdminDashboard() {
     );
   };
 
+  // 🟢 NAYA: PREMIUM GLOWING LOADER
   if (isLoading) {
     return (
-      <div className={`min-h-screen flex flex-col items-center justify-center transition-colors duration-500 ${bgMain}`}>
-        <div className="relative flex items-center justify-center mb-6">
-          <div className="absolute inset-0 bg-blue-500/20 blur-xl rounded-full w-24 h-24 animate-pulse"></div>
-          <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin z-10"></div>
-          <CloudDownload size={24} className="absolute text-blue-500 z-10" />
+      <div className={`min-h-screen flex flex-col items-center justify-center transition-colors duration-500 ${isDark ? 'bg-[#0f172a]' : 'bg-slate-50'}`}>
+        <div className="relative flex items-center justify-center mb-8">
+          {/* Outer Glowing Rings */}
+          <div className="absolute inset-0 bg-blue-500/20 blur-2xl rounded-full w-32 h-32 animate-pulse"></div>
+          <div className="absolute inset-0 bg-emerald-500/20 blur-xl rounded-full w-24 h-24 animate-ping" style={{ animationDuration: '2.5s' }}></div>
+          
+          {/* Spinning Rings */}
+          <div className={`w-20 h-20 border-[3px] rounded-full animate-spin z-10 ${isDark ? 'border-slate-800 border-t-blue-500' : 'border-slate-200 border-t-blue-600'}`}></div>
+          <div className="absolute w-14 h-14 border-[3px] border-transparent border-b-emerald-500 rounded-full animate-spin z-10" style={{ animationDirection: 'reverse', animationDuration: '1.5s' }}></div>
+          
+          {/* Central Bouncing Icon */}
+          <CloudDownload size={28} className={`absolute z-20 animate-bounce ${isDark ? 'text-blue-400' : 'text-blue-600'}`} />
         </div>
-        <h2 className="text-xl font-extrabold tracking-tight bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent animate-pulse">Syncing Bhatta Cloud Data...</h2>
+        
+        <h2 className="text-2xl md:text-3xl font-black tracking-widest uppercase bg-gradient-to-r from-blue-500 via-emerald-400 to-cyan-500 bg-clip-text text-transparent animate-pulse mb-2">Bhatta Pro Cloud</h2>
+        <p className={`text-xs md:text-sm font-bold tracking-widest uppercase animate-pulse ${textMuted}`}>Syncing Secure Database...</p>
       </div>
     );
   }
@@ -873,6 +887,33 @@ export default function AdminDashboard() {
         </div>
       )}
 
+      {/* MOBILE SETTINGS SLIDE-OUT */}
+      {isMobileMenuOpen && (
+        <div className="fixed inset-0 z-[150] flex animate-in fade-in duration-200 md:hidden">
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsMobileMenuOpen(false)}></div>
+          <div className={`relative ml-auto h-full w-64 shadow-2xl flex flex-col transform transition-transform duration-300 animate-in slide-in-from-right-10 ${isDark ? 'bg-slate-900 border-l border-slate-700' : 'bg-white border-l border-slate-200'}`}>
+            <div className={`flex items-center justify-between p-5 border-b ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
+              <h3 className={`font-extrabold tracking-wider uppercase text-sm ${textMain}`}>{t("Settings Menu", "सेटिंग्स मेनू")}</h3>
+              <button onClick={() => setIsMobileMenuOpen(false)} className={`p-2 rounded-xl transition-colors ${isDark ? 'bg-slate-800 text-slate-400 hover:text-white' : 'bg-slate-100 text-slate-500 hover:text-slate-800'}`}>
+                <X size={20} />
+              </button>
+            </div>
+            <div className="flex flex-col p-4 gap-3">
+              <button onClick={() => { toggleLanguage(); setIsMobileMenuOpen(false); }} className={`flex items-center gap-3 p-3.5 rounded-xl font-bold transition-all shadow-sm ${isDark ? 'bg-slate-800 text-cyan-400 hover:bg-slate-700 border-slate-700' : 'bg-slate-50 text-cyan-700 hover:bg-slate-100 border border-slate-200'}`}>
+                <Globe size={18} /> {lang === "en" ? "Change to Hindi (हिंदी)" : "Change to English"}
+              </button>
+              <button onClick={() => { toggleTheme(); setIsMobileMenuOpen(false); }} className={`flex items-center gap-3 p-3.5 rounded-xl font-bold transition-all shadow-sm ${isDark ? 'bg-slate-800 text-yellow-400 hover:bg-slate-700 border-slate-700' : 'bg-slate-50 text-slate-700 hover:bg-slate-100 border border-slate-200'}`}>
+                {isDark ? <Sun size={18} /> : <Moon size={18} />} {t("Toggle Theme", "थीम बदलें (Dark/Light)")}
+              </button>
+              <div className={`my-2 border-t ${isDark ? 'border-slate-800' : 'border-slate-100'}`}></div>
+              <button onClick={handleLogout} className={`flex items-center gap-3 p-3.5 rounded-xl font-bold transition-all shadow-sm bg-rose-500/10 text-rose-600 hover:bg-rose-500 hover:text-white border border-rose-500/20`}>
+                <LogOut size={18} /> {t("Logout Account", "अकाउंट लॉगआउट करें")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* NAVBAR */}
       <nav className={`fixed top-0 w-full h-16 backdrop-blur-md border-b z-[100] flex items-center justify-between px-4 transition-colors duration-300 ${navBg}`}>
         <div className="flex items-center">
@@ -883,7 +924,8 @@ export default function AdminDashboard() {
           </div>
         </div>
         <div className="flex items-center gap-2 md:gap-3">
-          <button onClick={toggleLanguage} className={`p-2 rounded-full transition-colors font-bold text-xs flex items-center gap-1 ${isDark ? 'bg-slate-800 text-cyan-400 hover:bg-slate-700' : 'bg-slate-100 text-cyan-600 shadow-sm hover:bg-slate-200'}`}><Globe size={16} /> {lang === "en" ? "HI" : "EN"}</button>
+          
+          {/* Notifications (Always visible) */}
           <div className="relative">
             <button onClick={toggleNotifications} className={`p-2 rounded-full transition-colors relative ${isDark ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-100 text-slate-600'}`}>
               <Bell size={20} />
@@ -905,8 +947,18 @@ export default function AdminDashboard() {
               </div>
             )}
           </div>
-          <button onClick={toggleTheme} className={`p-2 rounded-full transition-colors ${isDark ? 'bg-slate-800 text-yellow-400 hover:bg-slate-700' : 'bg-slate-100 text-slate-600 shadow-sm hover:bg-slate-200'}`}>{isDark ? <Sun size={18} /> : <Moon size={18} />}</button>
-          <button onClick={handleLogout} className="flex items-center gap-2 px-3 py-1.5 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-lg transition text-sm font-bold border border-red-500/20"><LogOut size={16}/> <span className="hidden sm:inline">Logout</span></button>
+
+          {/* Desktop Only Actions */}
+          <div className="hidden md:flex items-center gap-3">
+            <button onClick={toggleLanguage} className={`p-2 rounded-full transition-colors font-bold text-xs flex items-center gap-1 ${isDark ? 'bg-slate-800 text-cyan-400 hover:bg-slate-700' : 'bg-slate-100 text-cyan-600 shadow-sm hover:bg-slate-200'}`}><Globe size={16} /> {lang === "en" ? "HI" : "EN"}</button>
+            <button onClick={toggleTheme} className={`p-2 rounded-full transition-colors ${isDark ? 'bg-slate-800 text-yellow-400 hover:bg-slate-700' : 'bg-slate-100 text-slate-600 shadow-sm hover:bg-slate-200'}`}>{isDark ? <Sun size={18} /> : <Moon size={18} />}</button>
+            <button onClick={handleLogout} className="flex items-center gap-2 px-3 py-1.5 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-lg transition text-sm font-bold border border-red-500/20"><LogOut size={16}/> <span className="hidden sm:inline">Logout</span></button>
+          </div>
+
+          {/* Mobile Only Settings Menu Toggle */}
+          <button onClick={() => setIsMobileMenuOpen(true)} className={`md:hidden p-2 rounded-xl transition-colors ${isDark ? 'bg-slate-800 text-slate-300 hover:text-white' : 'bg-slate-100 text-slate-600 hover:text-slate-800'}`}>
+            <MoreVertical size={24} />
+          </button>
         </div>
       </nav>
 
@@ -1052,13 +1104,23 @@ export default function AdminDashboard() {
 
             <div className={`border rounded-2xl p-6 shadow-xl transition-all ${cardBg}`}>
                <h2 className={`text-xl font-extrabold mb-4 flex items-center gap-2 ${isDark ? 'text-rose-400' : 'text-rose-600'}`}><LockKeyhole size={24} /> {t("Security PIN", "सुरक्षा पिन")}</h2>
-               <form onSubmit={handleSetPin} className="flex flex-col md:flex-row items-center gap-4">
-                 <div className="flex-1 w-full">
-                    <p className={`text-sm mb-2 ${textMuted}`}>Ye PIN dalne ke baad hi koi account delete ya password reset kar payega.</p>
-                    <input type="text" maxLength={4} value={newPinSetup} onChange={(e) => setNewPinSetup(e.target.value)} className={`w-full rounded-xl px-4 py-2.5 outline-none font-bold transition-all border ${inputBg}`} placeholder="Enter 4-Digit PIN" />
+               
+               {/* 🟢 NAYA: Secure PIN Update Form */}
+               <form onSubmit={handleSetPin} className="flex flex-col gap-4">
+                 <div className="flex flex-col md:flex-row gap-4">
+                   {adminPin && (
+                     <div className="flex-1 w-full">
+                       <p className={`text-xs font-bold mb-1.5 ${textMuted}`}>{t("Current PIN", "पुराना पिन")}</p>
+                       <input type="password" maxLength={4} value={oldPinSetup} onChange={(e) => setOldPinSetup(e.target.value)} className={`w-full rounded-xl px-4 py-2.5 outline-none font-bold transition-all border ${inputBg} tracking-[1em] text-center`} placeholder="****" required />
+                     </div>
+                   )}
+                   <div className="flex-1 w-full">
+                      <p className={`text-xs font-bold mb-1.5 ${textMuted}`}>{adminPin ? t("New PIN", "नया पिन") : t("Create 4-Digit PIN", "4-अंकों का पिन बनाएं")}</p>
+                      <input type="text" maxLength={4} value={newPinSetup} onChange={(e) => setNewPinSetup(e.target.value)} className={`w-full rounded-xl px-4 py-2.5 outline-none font-bold transition-all border ${inputBg} tracking-[1em] text-center`} placeholder="****" required />
+                   </div>
                  </div>
-                 <button type="submit" className="w-full md:w-auto px-6 py-2.5 mt-auto bg-rose-600 hover:bg-rose-500 text-white rounded-xl font-bold flex items-center gap-2 shadow-md active:scale-95">
-                   <Check size={18}/> {adminPin ? "Update PIN" : "Set PIN"}
+                 <button type="submit" className="w-full py-3 mt-2 bg-rose-600 hover:bg-rose-500 text-white rounded-xl font-bold flex justify-center items-center gap-2 shadow-md active:scale-95">
+                   <Check size={18}/> {adminPin ? "Update Security PIN" : "Set Security PIN"}
                  </button>
                </form>
             </div>
@@ -1404,7 +1466,7 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* ===================== RECYCLE BIN TAB ===================== */}
+        {/* ===================== RECYCLE BIN TAB (MOBILE OPTIMIZED) ===================== */}
         {activeTab === "recycle" && (
           <div className="space-y-6 animate-in fade-in duration-300 max-w-4xl mx-auto">
             <div className={`border rounded-2xl p-6 md:p-8 shadow-xl transition-all ${cardBg}`}>
@@ -1414,27 +1476,26 @@ export default function AdminDashboard() {
                 </h2>
                 <p className={`text-sm font-medium ${textMuted}`}>Yahan wo accounts hain jinhe delete kiya gaya tha. Aap inhe wapas Restore kar sakte hain ya hamesha ke liye Delete kar sakte hain.</p>
               </div>
+              
               {deletedLabourers.length === 0 ? (
                  <div className={`p-10 text-center rounded-xl border border-dashed ${isDark ? 'border-slate-700/50 bg-slate-900/50' : 'border-slate-300 bg-slate-50'}`}>
                     <RefreshCcw size={40} className={`mx-auto mb-4 ${textMuted} opacity-50`} />
                     <h3 className={`text-lg font-bold ${textMuted}`}>Recycle Bin Khali Hai</h3>
                  </div>
               ) : (
-                <div className={`rounded-xl border overflow-hidden shadow-inner ${isDark ? 'border-slate-700/60 bg-slate-900/40' : 'border-slate-200 bg-white'}`}>
-                  <table className="w-full text-left">
-                    <thead className={tableHeader}><tr><th className="p-4 font-bold">Deleted Labour</th><th className="p-4 font-bold text-center">Action</th></tr></thead>
-                    <tbody className={`text-sm ${tableBody}`}>
-                      {deletedLabourers.map(lab => (
-                        <tr key={lab.id} className={`transition-colors ${tableRowHover}`}>
-                          <td className="p-4"><span className={`font-bold text-base block ${textMain}`}>{tn(lab.name)}</span><span className={`text-xs ${textMuted}`}>ID: {lab.loginId}</span></td>
-                          <td className="p-4 flex items-center justify-center gap-2">
-                             <button onClick={() => setShowPinModal({action: "restore", targetId: lab.id})} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg transition-all active:scale-95 flex items-center gap-1"><RefreshCcw size={16}/> Restore</button>
-                             <button onClick={() => setShowPinModal({action: "hard_delete", targetId: lab.id})} className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-lg transition-all active:scale-95 flex items-center gap-1"><Trash2 size={16}/> Forever</button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div className="space-y-3">
+                  {deletedLabourers.map(lab => (
+                    <div key={lab.id} className={`flex flex-col sm:flex-row justify-between items-start sm:items-center p-4 rounded-xl border transition-all shadow-sm gap-4 ${isDark ? 'bg-slate-900/40 border-slate-700 hover:bg-slate-800/60' : 'bg-white border-slate-200 hover:shadow-md'}`}>
+                      <div>
+                        <span className={`font-extrabold text-lg block ${textMain}`}>{tn(lab.name)}</span>
+                        <span className={`text-xs font-semibold ${textMuted}`}>ID: <span className="text-blue-500">{lab.loginId}</span> | {lab.phone || "No Mobile"}</span>
+                      </div>
+                      <div className="flex items-center gap-2 w-full sm:w-auto">
+                         <button onClick={() => setShowPinModal({action: "restore", targetId: lab.id})} className="flex-1 sm:flex-none justify-center px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg transition-all active:scale-95 flex items-center gap-2"><RefreshCcw size={16}/> Restore</button>
+                         <button onClick={() => setShowPinModal({action: "hard_delete", targetId: lab.id})} className="flex-1 sm:flex-none justify-center px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-lg transition-all active:scale-95 flex items-center gap-2"><Trash2 size={16}/> Forever</button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
