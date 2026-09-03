@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🧱 Bhatta Pro
+# 🧱 Bricks Kiln
 **The Complete Brick Kiln Management System**
 
 [![Next.js](https://img.shields.io/badge/Next.js-black?style=for-the-badge&logo=next.js&logoColor=white)](#)
@@ -16,7 +16,7 @@
 
 ## 🌟 Introduction
 
-**Bhatta Pro** ek modern Progressive Web Application (PWA) hai jo Eent Bhatta malikon (Brick Kiln Owners) ki sabhi zarooraton ko dhyan mein rakh kar banaya gaya hai. Is app ke zariye aap hazaron mazdooron ka hisaab, kharcha (expenses), aur peshgi (advances) bina kisi paper register ke, seedhe apne phone ya laptop par manage kar sakte hain.
+**Bricks Kiln** ek modern Progressive Web Application (PWA) hai jo Eent Bhatta malikon (Brick Kiln Owners) ki sabhi zarooraton ko dhyan mein rakh kar banaya gaya hai. Is app ke zariye aap hazaron mazdooron ka hisaab, kharcha (expenses), aur peshgi (advances) bina kisi paper register ke, seedhe apne phone ya laptop par manage kar sakte hain.
 
 This application eliminates the hassle of manual registers by providing a fast, secure, and smart dashboard with advanced graphical insights and master PDF reporting.
 
@@ -48,22 +48,11 @@ This application eliminates the hassle of manual registers by providing a fast, 
 
 ---
 
-## 📸 Screenshots
-
-*(Yahan aap apne project ki real screenshots ke link daal sakte hain)*
-
-<div align="center">
-  <img src="https://via.placeholder.com/800x400.png?text=Dashboard+Overview+Screenshot" alt="Dashboard Overview" width="48%">
-  <img src="https://via.placeholder.com/800x400.png?text=Matrix+Ledger+Screenshot" alt="Monthly Matrix Ledger" width="48%">
-</div>
-
----
-
 ## 🛠️ Installation & Setup (इंस्टॉलेशन)
 
 Apne local system (laptop/PC) par is project ko run karne ke liye in steps ko follow karein:
 
 **1. Repository ko Clone karein:**
 ```bash
-git clone [https://github.com/Nadeemxsalar/bhatta-pro.git](https://github.com/Nadeemxsalar/bhatta-pro.git)
-cd bhatta-pro
+git clone [https://github.com/Nadeemxsalar/bricks-kiln.git](https://github.com/Nadeemxsalar/bricks-kiln.git)
+cd bricks-kiln
